@@ -2,6 +2,6 @@
 .swiftpm/
 *.xcodeproj
 .DS_Store
-xcbeautify-fd
+xctidy
 *.o
 *.swiftmodule

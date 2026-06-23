@@ -1,6 +1,6 @@
 import Foundation
 
-/// xcbeautify-fd's core engine.
+/// xctidy's core engine.
 ///
 /// Parses RAW `xcodebuild test` output directly -- the same textual protocol
 /// xcpretty's `parser.rb` and xcbeautify both regex-match (there is no formal
@@ -38,7 +38,7 @@ enum Matchers {
     static let failureDetail = try! NSRegularExpression(
         pattern: #"^(.+:\d+): error: [+-]\[(\S+) (.+)\] : (.*)$"#)
     static let executedSummary = try! NSRegularExpression(
-        pattern: #"Executed \d+ tests?,"#)
+        pattern: #"^\s*Executed \d+ tests?, with \d+ failures? \(\d+ unexpected\) in ([\d.]+) \([\d.]+\) seconds$"#)
     static let atomCall = try! NSRegularExpression(
         pattern: #"\b(?:describe|context|it)\(\s*"((?:[^"\\]|\\.)*)""#)
 }
@@ -195,6 +195,34 @@ enum AnsiColor: String {
     case green = "32"
     case yellow = "33"
     case cyan = "36"
+    case gray = "90"
+}
+
+/// `.classic` (default) faithfully reproduces what `tools/test_formatter.py`
+/// actually looked like in practice: every leaf gets xcbeautify's own
+/// "✔"/"⊘"/"✖" glyph plus the per-test "(N seconds)" xcodebuild reports,
+/// both colored (green/cyan/red); a failed leaf also keeps this project's
+/// "(FAILED - N)" cross-reference into the Failures section -- an
+/// improvement the original couldn't make (see docs/HOW_IT_WORKS.md,
+/// "Failure folding"). No run summary at the end, matching the original.
+///
+/// `.fd` is an actual clone of real RSpec's `-fd`/documentation formatter:
+/// a plain colored name with no glyph and no per-test time (this is the
+/// glyph-less tree `.classic` rendered before the swift.txt-fidelity
+/// rework), pending examples are yellow and say "(PENDING)" (RSpec's
+/// wording, not Xcode's "SKIPPED"), and the run ends with RSpec's own
+/// "Finished in N seconds" + "X examples, Y failures[, Z pending]" footer.
+///
+/// `.spec` is the more common convention used by reporters like Mocha's
+/// default `spec` reporter or Jest: a green "✔" with the passing test's name
+/// dimmed to gray (de-emphasized, since passes aren't where attention is
+/// needed), a red "✗ name (FAILED - N)" for failures, and a cyan
+/// "- name (SKIPPED)" for skips -- plus, at the end, Mocha's own
+/// "N passing (Ttime s)" / "M failing" / "K pending" summary lines.
+public enum RenderStyle: Equatable {
+    case classic
+    case fd
+    case spec
 }
 
 // MARK: - Failures
@@ -211,14 +239,20 @@ public struct EngineFailure {
 public final class Engine {
     private let atoms: Set<String>
     private let tty: Bool
+    private let style: RenderStyle
     private var lastPath: [String] = []
     private var curFailureLines: [(location: String, reason: String)] = []
     private(set) public var failures: [EngineFailure] = []
     private var out: [String] = []
+    private var exampleCount = 0
+    private var passedCount = 0
+    private var pendingCount = 0
+    private var lastTestTimeText: String?
 
-    public init(atoms: Set<String>, tty: Bool) {
+    public init(atoms: Set<String>, tty: Bool, style: RenderStyle = .classic) {
         self.atoms = atoms
         self.tty = tty
+        self.style = style
     }
 
     private func colorize(_ color: AnsiColor, _ s: String) -> String {
@@ -257,15 +291,27 @@ public final class Engine {
             let name = m.group(2, in: line), let state = m.group(3, in: line)
         {
             let path = splitPath(name, atoms: atoms)
-            renderCase(path: path, state: state)
+            // group(4) is the per-test "(N seconds)" xcodebuild reports for
+            // every case regardless of outcome -- .classic surfaces it
+            // directly (see RenderStyle doc comment); .fd/.spec don't use it
+            // per-leaf, only lastTestTimeText's run-level total.
+            let time = m.group(4, in: line)
+            renderCase(path: path, state: state, time: time)
             curFailureLines = []
             return
         }
         if Matchers.caseStarted.firstMatch(in: line) != nil {
             return  // pure bookkeeping; the tree is rendered from caseFinished
         }
-        if Matchers.executedSummary.firstMatch(in: line) != nil {
-            return  // suppressed; we render our own "N examples, M failures" summary
+        if let m = Matchers.executedSummary.firstMatch(in: line) {
+            // Suppressed from passthrough either way; under --fd we keep the
+            // captured time and render our own RSpec-style footer in
+            // finish() instead. There's one of these per nesting level
+            // (per-class, per-bundle, "All tests"); the last one wins, which
+            // is always the outermost/final total since XCTest finishes
+            // inner scopes before outer ones.
+            lastTestTimeText = m.group(1, in: line)
+            return
         }
         if line.contains("error:") || line.contains("fatal error:")
             || line.contains("** BUILD FAILED **") || line.contains("** TEST FAILED **")
@@ -276,7 +322,8 @@ public final class Engine {
         // else: suppress routine build-phase noise.
     }
 
-    private func renderCase(path: [String], state: String) {
+    private func renderCase(path: [String], state: String, time: String?) {
+        exampleCount += 1
         var shared = 0
         for (a, b) in zip(path, lastPath) {
             if a != b { break }
@@ -288,13 +335,43 @@ public final class Engine {
             }
         }
         let leafDepth = path.count - 1
-        var label = path[path.count - 1]
+        let name = path[path.count - 1]
+        var label = name
+
+        // .classic's "(N seconds)" suffix, colored to match its glyph --
+        // mirrors xcbeautify's own .coloredTime(), which test_formatter.py
+        // re-emitted verbatim (see that script's TIMED_RE/module docstring).
+        func timedSuffix(_ color: AnsiColor) -> String {
+            guard let time else { return "" }
+            return " (\(colorize(color, time)) seconds)"
+        }
 
         switch state {
         case "passed":
-            label = colorize(.green, label)
+            passedCount += 1
+            switch style {
+            case .classic:
+                label = "\(colorize(.green, "✔")) \(name)\(timedSuffix(.green))"
+            case .fd:
+                label = colorize(.green, name)
+            case .spec:
+                label = colorize(.green, "✔") + " " + colorize(.gray, name)
+            }
         case "skipped":
-            label = colorize(.cyan, "\(label) (SKIPPED)")
+            pendingCount += 1
+            switch style {
+            case .classic:
+                // No "(SKIPPED)" text suffix here, deliberately -- the
+                // original test_formatter.py distinguished skips from
+                // passes by glyph (⊘ vs ✔) and color alone. --fd and
+                // --spec both spell it out in words; reach for those if
+                // a glyph-only signal isn't enough in your terminal/font.
+                label = "\(colorize(.cyan, "⊘")) \(name)\(timedSuffix(.cyan))"
+            case .fd:
+                label = colorize(.yellow, "\(name) (PENDING)")
+            case .spec:
+                label = colorize(.cyan, "- \(name) (SKIPPED)")
+            }
         case "failed":
             let n = failures.count + 1
             let message = curFailureLines.map { $0.reason }.joined(separator: "\n")
@@ -305,7 +382,17 @@ public final class Engine {
                     full: path,
                     message: message.isEmpty ? "(no failure detail captured)" : message,
                     location: location))
-            label = colorize(.red, "\(label) (FAILED - \(n))")
+            switch style {
+            case .classic:
+                // Keeps the "(FAILED - N)" Failures cross-reference (the
+                // headline improvement raw-protocol parsing makes possible)
+                // alongside the original's glyph + per-test time.
+                label = "\(colorize(.red, "✖")) \(name) (FAILED - \(n))\(timedSuffix(.red))"
+            case .fd:
+                label = colorize(.red, "\(name) (FAILED - \(n))")
+            case .spec:
+                label = colorize(.red, "✗ \(name) (FAILED - \(n))")
+            }
         default:
             break
         }
@@ -327,6 +414,41 @@ public final class Engine {
                 emit("     # \(f.location)")
             }
         }
+        if style == .fd {
+            emit()
+            if let t = lastTestTimeText {
+                emit("Finished in \(t) seconds")
+            }
+            var counts = pluralized(exampleCount, "example")
+            counts += ", \(pluralized(failures.count, "failure"))"
+            if pendingCount > 0 {
+                counts += ", \(pendingCount) pending"
+            }
+            emit(counts)
+        }
+        if style == .spec {
+            // Mocha's own summary lines -- "N passing (Ttime)", then
+            // "M failing"/"K pending" only when nonzero, same as a real
+            // Mocha `spec` reporter run. xcodebuild reports the total run
+            // time in seconds (not Mocha's milliseconds), so the unit
+            // suffix here is "s", e.g. kotlin.txt's "72 passing (18031.0s)".
+            emit()
+            var passingLine = "\(passedCount) passing"
+            if let t = lastTestTimeText {
+                passingLine += " (\(t)s)"
+            }
+            emit(colorize(.green, passingLine))
+            if !failures.isEmpty {
+                emit(colorize(.red, "\(failures.count) failing"))
+            }
+            if pendingCount > 0 {
+                emit(colorize(.cyan, "\(pendingCount) pending"))
+            }
+        }
         return out.joined(separator: "\n") + "\n"
+    }
+
+    private func pluralized(_ n: Int, _ word: String) -> String {
+        "\(n) \(word)\(n == 1 ? "" : "s")"
     }
 }

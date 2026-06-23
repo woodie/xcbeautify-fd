@@ -1,37 +1,61 @@
-# xcbeautify-fd
+# xctidy
 
-Bring [RSpec](https://github.com/rspec/rspec)'s "format documentation" (`-fd`) output to `xcodebuild test`, for projects using [Quick](https://github.com/Quick/Quick)/[Nimble](https://github.com/Quick/Nimble).
+Flat `xcodebuild test` output is noisy. `xctidy` is a formatter for projects
+using [Quick](https://github.com/Quick/Quick)/[Nimble](https://github.com/Quick/Nimble)
+that turns it into a readable, nested `describe`/`context`/`it` tree -- in
+whichever of three well-known conventions you point it at.
 
-`xcbeautify-fd` reads xcodebuild's raw test output directly -- the same textual protocol [xcpretty](https://github.com/xcpretty/xcpretty) and [xcbeautify](https://github.com/cpisciotta/xcbeautify) both parse -- so it works standalone, with no dependency on either tool being installed. It's the sibling project to [ginkgo-fd](https://github.com/woodie/ginkgo-fd), which does the same thing for Go's Ginkgo.
-
-## Why a separate tool
-
-Quick promotes the full `describe`/`context`/`it` text to the XCTest selector name by joining each level with `", "`. That's fine until the prose itself contains a comma -- `it("computes tomorrow as Sunday (0), wrapping the week")` -- at which point a naive split on `", "` can't tell a nesting boundary from a comma in someone's sentence.
-
-`xcbeautify-fd` resolves this by cross-referencing the literal `describe(...)`/`context(...)`/`it(...)` strings in your `Tests/*.swift` files. If there's exactly one way to decompose a flattened name into known atoms, it uses that; otherwise it falls back to a paren-depth-aware split. Because it parses the raw `error:` line directly, failing tests fold cleanly into the tree with their message and `file:line`, instead of being shown as flat output. This is the underlying engine that was originally built and validated as a [test_formatter.py post-processor](https://github.com/woodie/next-caltrain-swift) for xcbeautify's output; this tool removes that dependency by parsing xcodebuild directly.
-
-## Installation
-
-Build locally with Swift Package Manager:
+## 1. Install
 
 ```
-git clone https://github.com/woodie/xcbeautify-fd.git
-cd xcbeautify-fd
+git clone https://github.com/woodie/xctidy.git
+cd xctidy
 swift build -c release
-cp .build/release/xcbeautify-fd /usr/local/bin/
+cp .build/release/xctidy /usr/local/bin/
 ```
 
-## Usage
+## 2. Drop it into your test pipeline
 
-Pipe `xcodebuild test` straight into it, the same way you'd pipe into xcpretty or xcbeautify. Pass the path to your `Tests` directory (containing your `describe`/`context`/`it` spec files) as the one argument, so the comma-disambiguation dictionary can be built:
+`xctidy` reads `xcodebuild`'s raw output directly -- the same textual
+protocol xcbeautify and xcpretty both parse -- so it's a *replacement*
+formatter, not a post-processor chained after one of them. Pipe `xcodebuild
+test` straight into it, passing the path to your `Tests` directory:
 
 ```
-xcodebuild test -scheme MyApp -destination 'platform=iOS Simulator,name=iPhone 15' | xcbeautify-fd Tests
+xcodebuild test -scheme MyApp -destination "$DESTINATION" | xctidy Tests
 ```
 
-If no path is given, it looks in the current directory.
+Using fastlane? `scan` (and `gym`/`snapshot`) already hand this same pipeline
+slot to xcbeautify/xcpretty via the `xcodebuild_formatter` option -- swap the
+value, no new stage needed:
 
-Sample output:
+```ruby
+# Fastfile
+lane :test do
+  scan(
+    scheme: "MyApp",
+    xcodebuild_formatter: "/usr/local/bin/xctidy --fd Tests"
+  )
+end
+```
+
+## 3. Pick a style
+
+Three named styles, each matching a convention you've probably already seen
+in some other test runner:
+
+| Flag | Convention | Look |
+|---|---|---|
+| `--classic` (default) | this project's own original Python formatter | glyph + `name (N seconds)`, failures add `(FAILED - N)`, no summary footer |
+| `--fd` | RSpec's `-fd`/documentation formatter | plain colored name, yellow `(PENDING)` for skips, ends with RSpec's `Finished in...`/`X examples, Y failures` footer |
+| `--spec` | Mocha's default `spec` reporter / Jest | green `✔` + gray name, red `✗ name (FAILED - N)`, ends with Mocha's `N passing (Ttime)` footer |
+
+Full output samples for all three: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#output-styles).
+
+## 4. Run tests
+
+Run your test suite the same way you always have -- `xctidy` is just the
+last stage of the pipe from step 2. Here's `--classic`, the default:
 
 ```
 NextCaltrainTests.xctest
@@ -40,18 +64,18 @@ GoodTimesSpec
   GoodTimes
     when 'today' is fixed via debugOverrideDotw
       and today is Saturday (6)
-        computes tomorrow as Sunday (0), wrapping the week
+        ✔ computes tomorrow as Sunday (0), wrapping the week (0.0033 seconds)
 
 CaltrainServiceSpec
   CaltrainService
     #routes(from:to:scheduleType:)
       for a direct diesel trip (Morgan Hill to Gilroy)
-        is not a transfer, since both endpoints are South County
+        ✔ is not a transfer, since both endpoints are South County (0.0021 seconds)
       for a direct electric trip (San Francisco to San Jose Diridon)
-        is not a transfer (FAILED - 1)
+        ✖ is not a transfer (FAILED - 1) (0.0019 seconds)
     #nextIndex(trips:minutes:)
       when given an empty trip list
-        returns nil (SKIPPED)
+        ⊘ returns nil (0.0001 seconds)
 
 Failures:
 
@@ -60,8 +84,11 @@ Failures:
      # /path/to/Tests/CaltrainServiceSpec.swift:55
 ```
 
-Build-phase noise (compiles, links, codesign) is suppressed for a clean test-only view. Any line containing `error:` is always passed through verbatim, so a real build failure is never hidden.
+Build-phase output (compiles, links, codesign) is suppressed. Lines
+containing `error:` are always passed through, so a real build failure is
+never hidden.
 
-## Status
+## More
 
-This is a proof-of-concept built to demonstrate that an RSpec-`-fd`-style formatter can work directly against xcodebuild's raw output, ahead of proposing it as a built-in mode for xcbeautify -- mirroring [ginkgo-fd's upstream contribution to Ginkgo](https://github.com/onsi/ginkgo/pull/1670).
+How the comma-disambiguation, failure-folding, and fastlane integration
+actually work: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)
