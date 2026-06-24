@@ -60,12 +60,12 @@ extension NSTextCheckingResult {
 
 // MARK: - Dictionary-based comma disambiguation
 //
-// Ported from next-caltrain-swift's tools/test_formatter.py. Builds a set of
-// every known describe/context/it literal string by scanning the project's
-// spec files, then tries to decompose a flattened Quick name into a
-// `", "`-joined sequence of those known atoms. We only need to know whether
-// there is exactly one way to do that (unambiguous) or not (fall back to a
-// heuristic), so the search stops after finding 2 decompositions.
+// Builds a set of every known describe/context/it literal string by
+// scanning the project's spec files, then tries to decompose a flattened
+// Quick name into a `", "`-joined sequence of those known atoms. We only
+// need to know whether there is exactly one way to do that (unambiguous) or
+// not (fall back to a heuristic), so the search stops after finding 2
+// decompositions.
 
 public func unescapeSwiftLiteral(_ raw: String) -> String {
     var out = ""
@@ -198,12 +198,10 @@ enum AnsiColor: String {
     case gray = "90"
 }
 
-/// `.classic` (default) faithfully reproduces what `tools/test_formatter.py`
-/// actually looked like in practice: every leaf gets xcbeautify's own
-/// "✔"/"⊘"/"✖" glyph plus the per-test "(N seconds)" xcodebuild reports,
-/// both colored (green/cyan/red); a failed leaf also keeps this project's
-/// "(FAILED - N)" cross-reference into the Failures section -- an
-/// improvement the original couldn't make (see docs/HOW_IT_WORKS.md,
+/// `.classic` (default): every leaf gets xcbeautify's own "✔"/"⊘"/"✖" glyph
+/// plus the per-test "(N seconds)" xcodebuild reports, both colored
+/// (green/cyan/red); a failed leaf also keeps this project's "(FAILED - N)"
+/// cross-reference into the Failures section (see docs/HOW_IT_WORKS.md,
 /// "Failure folding").
 ///
 /// `.fd` clones real RSpec's `-fd`/documentation formatter's *leaf*
@@ -347,8 +345,7 @@ public final class Engine {
         var label = name
 
         // .classic's "(N seconds)" suffix, colored to match its glyph --
-        // mirrors xcbeautify's own .coloredTime(), which test_formatter.py
-        // re-emitted verbatim (see that script's TIMED_RE/module docstring).
+        // mirrors xcbeautify's own .coloredTime().
         func timedSuffix(_ color: AnsiColor) -> String {
             guard let time else { return "" }
             return " (\(colorize(color, time)) seconds)"
@@ -368,11 +365,11 @@ public final class Engine {
             pendingCount += 1
             switch style {
             case .classic:
-                // No "(SKIPPED)" text suffix here, deliberately -- the
-                // original test_formatter.py distinguished skips from
-                // passes by glyph (⊘ vs ✔) and color alone. -fd and
-                // -fs both spell it out in words; reach for those if
-                // a glyph-only signal isn't enough in your terminal/font.
+                // No "(SKIPPED)" text suffix here, deliberately -- .classic
+                // distinguishes skips from passes by glyph (⊘ vs ✔) and
+                // color alone. -fd and -fs both spell it out in words;
+                // reach for those if a glyph-only signal isn't enough in
+                // your terminal/font.
                 label = "\(colorize(.cyan, "⊘")) \(name)\(timedSuffix(.cyan))"
             case .fd:
                 label = colorize(.yellow, "\(name) (PENDING)")

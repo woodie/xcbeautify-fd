@@ -49,10 +49,13 @@ output side by side made the run-ending look like three different
 conventions for the same information, which defeated the point of having
 one shared footer in the first place.
 
-With the default (no flag), every leaf gets a glyph -- `✔` passed, `⊘` skipped,
-`✖` failed. A failed leaf also keeps `(FAILED - N)`, the cross-reference
-into the `Failures:` section --  the name uses internally (see
-"Failure folding" above). The run ends with real xcbeautify's own
+With the default (no flag), every leaf gets a glyph -- `✔` passed, `⊘`
+skipped, `✖` failed -- plus the per-test `(N seconds)` `xcodebuild` itself
+reports, both colored (green/cyan/red). A failed leaf also keeps
+`(FAILED - N)`, the cross-reference into the `Failures:` section -- not
+possible if something else had already joined the failing test's name and
+reason with the same separator the name uses internally (see "Failure
+folding" above). The run ends with real xcbeautify's own
 run-results footer: a green `Test Succeeded` (or red `Test Failed`)
 headline, then `Tests Passed: X failed, Y skipped, Z total (N seconds)` --
 that line lists all three counts despite its name, matching genuine
@@ -148,17 +151,6 @@ covering parallel output. Worth fixing before relying on `xctidy` for a
 parallelized test plan.
 
 ## Background
-
-This engine started as a Python post-processor
-([`test_formatter.py`](https://github.com/woodie/next-caltrain-swift)) that
-cleaned up [xcbeautify](https://github.com/cpisciotta/xcbeautify)'s already-
-reformatted output. That worked, but had two limits: it depended on
-xcbeautify being installed and run first, and by the time text reached it,
-xcbeautify had already joined a failing test's name and failure reason with
-the same separator, making it impossible to fold failures into the tree.
-`xctidy` is a from-scratch Swift implementation that reads xcodebuild's raw
-output directly instead, removing that dependency and adding the failure
-folding the Python version couldn't do.
 
 It's not the first time this exact problem has come up: a near-identical
 comma-disambiguation approach was built for Go's Ginkgo as

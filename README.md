@@ -43,7 +43,7 @@ set -o pipefail && xcodebuild test [flags] | xctidy Tests
 ```
 
 ```bash
-swift test 2>&1 | xctidy Tests
+swift test | xctidy Tests
 ```
 
 The positional argument (`Tests` above) is the path to your specs

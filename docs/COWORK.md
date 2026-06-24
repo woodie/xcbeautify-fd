@@ -398,3 +398,102 @@ round) so the user should run `swift test` on their Mac to confirm
 `EngineSpec.swift` still passes -- nothing in the test suite invokes CLI
 flags directly (it tests `Engine`/`RenderStyle` directly), so this should
 be a no-op for tests, but worth a real run regardless.
+
+The user committed the working-tree state from that round across two of
+their own commits (`fca55e3` "Clean up format flags.", `81eaee8` "Tidy up
+the flag section."), then said: "The original `test_formatter.py` was
+created the day before we created this project, and we will replace it
+today, so no need to reference it." -- they'd already made one docs edit
+themselves (`1528949`, "Remove reference to original test_formatter.py.",
+touching only `docs/HOW_IT_WORKS.md`'s "default (no flag)" paragraph) but
+that edit left a dangling sentence fragment ("the cross-reference into the
+`Failures:` section --  the name uses internally") and dropped the
+per-test-timing/coloring detail entirely. Cowork fixed that paragraph (restored
+the "(N seconds)"/coloring description, repaired the grammar, kept the
+test_formatter.py mention out) and then swept the rest of the codebase for
+the same lineage framing, since the instruction was "no need to reference
+it" project-wide, not just in that one paragraph: deleted
+`docs/HOW_IT_WORKS.md`'s "Background" section's opening paragraph entirely
+(the "this engine started as a Python post-processor... `xctidy` is a
+from-scratch Swift implementation" framing -- redundant with "Failure
+folding" above it anyway, which already explains why reading raw
+`xcodebuild` output matters without naming the old script), and rewrote
+four code comments in `Sources/XctidyKit/Engine.swift` (the comma-
+disambiguation header, the `RenderStyle` doc comment, the `timedSuffix`
+comment, and the skip-glyph rationale comment) plus one in
+`Sources/xctidy/main.swift`'s usage block, all of which cited
+`tools/test_formatter.py` as the thing being matched/ported-from. Left
+alone: `docs/COWORK.md`'s own earlier entries (this file is a historical
+log of what was true at the time, not living docs) and
+`EngineSpec.swift`'s `next-caltrain-swift` path references (those cite
+where the real fixture strings/paths came from, not test_formatter.py's
+lineage -- a different kind of reference). Verified with a repo-wide grep
+for `test_formatter` afterward -- the only remaining hit is this file's own
+earlier narrative entry, as intended.
+
+## Later session: install permissions, a stdin gotcha, and a sudo fix
+
+Three short rounds, all triggered by the user actually running the
+installed binary on their Mac rather than just building it. First: `make
+install` failed with `cp: /usr/local/bin/xctidy: Permission denied` --
+expected on Apple Silicon, where `/usr/local/bin` is root-owned out of the
+box (Intel Macs/Homebrew users often have it `chown`'d to themselves, which
+is why this isn't universal). Cowork explained the cause and offered two
+options without picking one: `sudo make install`, or `make install
+PREFIX=$HOME/.local` (no sudo, but `$HOME/.local/bin` then needs to be on
+`PATH`).
+
+Second: the user reported "the binary does not work" after installing with
+`sudo` (confirmed via `ls -la` showing a root-owned, correctly-permissioned
+executable). Rather than guess, Cowork asked for the exact command/output,
+suspecting the stdin-block gotcha -- `xctidy` reads from stdin and a bare
+invocation with nothing piped in just hangs, it's not actually broken. The
+user confirmed: `swift test 2>&1 | xctidy Tests` produced a correct,
+fully-rendered 33-example tree (hand-verified the leaf count against the
+footer's "33 total"), so the binary was fine all along.
+
+Third: the user then pasted a second run, `swift test | xctidy Tests`
+(no `2>&1`), prefaced "this is fine too...", showing three extra lines above
+the tree -- `Building for debugging...`, `[7/7] Write swift-version-...txt`,
+`Build complete! (0.33s)`. Cowork initially mischaracterized this,
+attributing the first run's clean output to the `2>&1` redirect itself. The
+user corrected that framing directly: "Adding `2>&1` simply hides what
+something good is happening" -- i.e. crediting `2>&1` as a fix was wrong;
+the real explanation needed tracing, not a guess. Reading `Engine.swift`'s
+`feedLine` confirmed its noise suppression is default-deny (anything not
+matching a known `xcodebuild`-test-protocol line, and not an `error:`/
+build-failed marker, is silently dropped with no `emit()` call) -- which
+means those three SPM lines were never reaching `feedLine` at all in the
+no-`2>&1` run. `swift build`/`swift test` write their own build-progress
+lines to **stderr**, not stdout; without `2>&1`, stderr bypasses the pipe
+entirely and prints straight to the terminal, interleaved with `xctidy`'s
+stdout but completely unprocessed by it. With `2>&1`, those same lines do
+get fed into `feedLine`, where the existing default-deny fallthrough
+already drops them correctly -- which is what made the first run look
+clean. Net result: no `Matchers`/noise-filter code change was needed or
+made; the suppression logic was already correct on both paths, and the fix
+was purely in how Cowork explained the mechanism, not in `Engine.swift`. A
+concrete falsifiable check was offered to confirm the stderr theory:
+`swift test 2>/dev/null | xctidy Tests` should make those three lines
+disappear outright (discarded with stderr) rather than reappear filtered.
+
+The user then asked to make `make install` actually prompt for a sudo
+password instead of failing outright -- turning the first round's two
+manually-chosen options into one command that does the right thing
+automatically. `Makefile` gained a `SUDO` variable, computed once via
+`$(shell ...)`: starting from `$(PREFIX)/bin`, walk up to the nearest
+*existing* ancestor directory and test its writability, falling back to
+`sudo` only if that ancestor isn't writable. The ancestor-walk (rather than
+testing `$(PREFIX)/bin` directly) matters for a not-yet-created `PREFIX`
+like `$HOME/.local` -- `$HOME/.local/bin` doesn't exist yet on a fresh
+machine, so testing it directly would wrongly fall back to `sudo`; walking
+up to `$HOME`, which does exist and is writable, gives the right answer.
+`install`'s `mkdir`/`cp` and `uninstall`'s `rm` are now all prefixed with
+`$(SUDO)`. Verified with `make -n install`/`make -n uninstall` dry runs
+under both a locked-down default `PREFIX` (emits `sudo mkdir`/`sudo cp`)
+and a writable override `PREFIX=/tmp/...` (emits plain `mkdir`/`cp`, no
+prompt) -- both matched the intended behavior exactly. `docs/DEVELOPMENT.md`
+was updated to describe the new conditional-sudo behavior alongside its
+existing `PREFIX` explanation. Not yet done: `git rm docs/example.gif` and
+restoring the Known-limitations README link both remain open from earlier
+rounds, still unanswered by the user.

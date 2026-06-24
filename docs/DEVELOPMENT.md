@@ -23,7 +23,11 @@ swift build -c release # what you'd actually install/ship
 
 A `Makefile` wraps the release build for end users -- `make install` builds
 and copies the binary to `$(PREFIX)/bin` (`PREFIX` defaults to
-`/usr/local`; override with `make install PREFIX=/some/path`). `make
+`/usr/local`; override with `make install PREFIX=/some/path`). `install`
+and `uninstall` only invoke `sudo` when `$(PREFIX)` actually isn't
+writable -- the default `/usr/local/bin` is root-owned on Apple Silicon, so
+that's a real password prompt rather than a silent failure, but a `PREFIX`
+override like `$HOME/.local` never prompts. `make
 uninstall`/`make clean`/`make test`/`make xcode` (open the generated Xcode
 project) are also available. None of that replaces `swift build`/`swift
 test` for day-to-day contributor iteration -- the Makefile is there for the
