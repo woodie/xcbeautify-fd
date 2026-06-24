@@ -49,14 +49,9 @@ output side by side made the run-ending look like three different
 conventions for the same information, which defeated the point of having
 one shared footer in the first place.
 
-The default (no flag) matches what the original
-[`test_formatter.py`](https://github.com/woodie/next-caltrain-swift) actually
-produced: every leaf gets a glyph -- `✔` passed, `⊘` skipped, `✖` failed --
-plus the per-test `(N seconds)` `xcodebuild` itself reports, both colored
-(green/cyan/red). A failed leaf also keeps `(FAILED - N)`, the cross-reference
-into the `Failures:` section -- an improvement the original couldn't make,
-since by the time text reached it, xcbeautify had already joined a failing
-test's name and reason with the same separator the name uses internally (see
+With the default (no flag), every leaf gets a glyph -- `✔` passed, `⊘` skipped,
+`✖` failed. A failed leaf also keeps `(FAILED - N)`, the cross-reference
+into the `Failures:` section --  the name uses internally (see
 "Failure folding" above). The run ends with real xcbeautify's own
 run-results footer: a green `Test Succeeded` (or red `Test Failed`)
 headline, then `Tests Passed: X failed, Y skipped, Z total (N seconds)` --
