@@ -1,33 +1,112 @@
 # xctidy
 
-Flat `xcodebuild test` output is noisy. `xctidy` is a formatter for projects
-using [Quick](https://github.com/Quick/Quick)/[Nimble](https://github.com/Quick/Nimble)
-that turns it into a readable, nested `describe`/`context`/`it` tree -- in
-whichever of three well-known conventions you point it at.
+[![Swift](https://img.shields.io/badge/swift-5.7%2B-F05138.svg)](Package.swift)
+[![License](https://img.shields.io/github/license/woodie/xctidy.svg)](LICENSE)
 
-## 1. Install
+<!-- CI and release badges land here once a GitHub Actions workflow and a tagged release exist. -->
 
-```
+![Example Screenshot](docs/example.png)
+
+**`xctidy` turns flat, comma-joined `xcodebuild test` output for
+[Quick](https://github.com/Quick/Quick)/[Nimble](https://github.com/Quick/Nimble)
+suites into a readable, nested `describe`/`context`/`it` tree.**
+
+It reads `xcodebuild`'s raw output directly -- the same protocol xcbeautify
+and xcpretty both parse -- so it's a formatter in its own right, not a
+post-processor chained after either of them.
+
+## Why xctidy instead of xcbeautify or xcpretty?
+
+xcbeautify and xcpretty are general-purpose `xcodebuild` beautifiers: they
+format build output as well as test output, run on Linux, emit JUnit
+reports, and integrate with CI UIs (GitHub Actions, TeamCity, Azure DevOps).
+`xctidy` does none of that. It does one thing they don't: turn a
+Quick/Nimble test's comma-flattened XCTest name back into a real nested
+tree, and fold a failure's reason and `file:line` into its own section by
+reading `xcodebuild`'s raw `error:` line directly -- something no
+post-processor can do once another formatter has already reshuffled that
+text (see [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#failure-folding)).
+
+**Reach for `xctidy` when:**
+
+- your tests are Quick/Nimble `describe`/`context`/`it` specs (not Swift
+  Testing's `@Test`/`@Suite`, not plain `XCTestCase`)
+- you want RSpec- or Mocha-style nested, indented test output instead of one
+  flat list of comma-joined names
+- you want failures pulled out of the tree into their own section, with
+  `file:line` preserved
+
+**Keep xcbeautify/xcpretty (or run them alongside `xctidy`) when:**
+
+- you need build-phase output formatted rather than suppressed --
+  `xctidy` throws away everything that isn't a test result
+- you're on Linux, need JUnit XML, or want the GitHub Actions/TeamCity/Azure
+  DevOps renderers -- `xctidy` has none of that
+- your tests aren't Quick/Nimble -- there's no comma-flattening problem to
+  solve, so `xctidy` adds nothing over what you already have
+
+Both read the same raw `xcodebuild` protocol, so they slot into the same
+pipeline position. If you want xcbeautify's build-phase formatting *and*
+`xctidy`'s test tree, run `xcodebuild build` through xcbeautify and
+`xcodebuild test` through `xctidy` separately -- don't chain them on the
+same invocation.
+
+## Features
+
+- [x] Disambiguates Quick/Nimble's comma-flattened XCTest names back into a
+  real nested tree
+- [x] Folds a failing test's reason and `file:line` into a dedicated
+  `Failures:` section, from `xcodebuild`'s raw output directly
+- [x] Three familiar output conventions -- `--classic`, RSpec's `-fd`,
+  Mocha's `spec` -- pick with a flag
+- [x] Drop-in `xcodebuild_formatter` for fastlane's `scan`/`gym`/`snapshot`;
+  no xcbeautify/xcpretty install required
+- [x] Written in Swift: compiles to a static binary, no Ruby/Node dependency
+  added to your pipeline
+- [ ] Swift Testing's `@Test`/`@Suite` macro syntax -- not yet, see
+  [Known limitations](docs/HOW_IT_WORKS.md#known-limitations)
+- [ ] Parallel-testing dedup (`-parallel-testing-enabled`) -- not yet, see
+  [Known limitations](docs/HOW_IT_WORKS.md#known-limitations)
+
+## Installation
+
+### Build from source
+
+```bash
 git clone https://github.com/woodie/xctidy.git
 cd xctidy
 swift build -c release
 cp .build/release/xctidy /usr/local/bin/
 ```
 
-## 2. Drop it into your test pipeline
+## Usage
 
-`xctidy` reads `xcodebuild`'s raw output directly -- the same textual
-protocol xcbeautify and xcpretty both parse -- so it's a *replacement*
-formatter, not a post-processor chained after one of them. Pipe `xcodebuild
-test` straight into it, passing the path to your `Tests` directory:
-
-```
-xcodebuild test -scheme MyApp -destination "$DESTINATION" | xctidy Tests
+```bash
+xcodebuild test [flags] | xctidy Tests
 ```
 
-Using fastlane? `scan` (and `gym`/`snapshot`) already hand this same pipeline
-slot to xcbeautify/xcpretty via the `xcodebuild_formatter` option -- swap the
-value, no new stage needed:
+If you want `xctidy` to exit with the same status code as `xcodebuild` (e.g.
+on CI):
+
+```bash
+set -o pipefail && xcodebuild test [flags] | xctidy Tests
+```
+
+```bash
+swift test 2>&1 | xctidy Tests
+```
+
+The positional argument (`Tests` above) is the path to your specs
+directory -- it's how `xctidy` cross-references `describe`/`context`/`it`
+string literals to disambiguate comma-flattened names. Omit it and `xctidy`
+falls back to a heuristic that handles most cases, but a known spec
+directory is more reliable.
+
+### fastlane
+
+`scan` (and `gym`/`snapshot`) already hand this exact pipeline slot to
+xcbeautify/xcpretty via the `xcodebuild_formatter` option -- swap the value,
+no new stage needed:
 
 ```ruby
 # Fastfile
@@ -39,56 +118,56 @@ lane :test do
 end
 ```
 
-## 3. Pick a style
+## Output styles
 
-Three named styles, each matching a convention you've probably already seen
-in some other test runner:
+Three named styles, each matching a convention from some other test runner
+you've probably already seen:
 
-| Flag | Convention | Look |
-|---|---|---|
-| `--classic` (default) | this project's own original Python formatter | glyph + `name (N seconds)`, failures add `(FAILED - N)`, no summary footer |
-| `--fd` | RSpec's `-fd`/documentation formatter | plain colored name, yellow `(PENDING)` for skips, ends with RSpec's `Finished in...`/`X examples, Y failures` footer |
-| `--spec` | Mocha's default `spec` reporter / Jest | green `✔` + gray name, red `✗ name (FAILED - N)`, ends with Mocha's `N passing (Ttime)` footer |
+| Flag | Short form | Convention | Look |
+|---|---|---|---|
+| `--classic` (default) | -- | this project's own original Python formatter | glyph + `name (N seconds)`, failures add `(FAILED - N)` |
+| `--fd` | `-fd` | RSpec's `-fd`/documentation formatter | plain colored name, yellow `(PENDING)` for skips |
+| `--spec` | `-fs` | Mocha's default `spec` reporter / Jest | green `✔` + gray name, red `✗ name (FAILED - N)` |
 
-Full output samples for all three: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#output-styles).
+All three end with the exact same closing footer, byte-for-byte, lifted
+from real xcbeautify: a green `Test Succeeded`/red `Test Failed` headline,
+then `Tests Passed: X failed, Y skipped, Z total (N seconds)`. `--fd` and
+`--spec` only change how the tree above that footer looks (RSpec's/Mocha's
+own native run summary isn't printed on top of it) -- one shared, unambiguous
+ending regardless of style.
 
-## 4. Run tests
+Each style is also reachable through `--format <name>` (`documentation`,
+`spec`, `classic`) or, for the two non-default styles, its short form --
+the `-f<letter>` idiom RSpec itself uses, since `rspec -fd` is really `-f`
+(`--format`) immediately followed by the formatter's single-letter code,
+not a dedicated two-letter flag. Classic has no short form -- it's already
+what you get with no flag at all, so a `-fc` that just reproduced default
+behavior would only confuse people about what it's for. `--style <name>`
+(with `fd` in place of `documentation`) still works too -- pick whichever
+reads best in your pipeline.
 
-Run your test suite the same way you always have -- `xctidy` is just the
-last stage of the pipe from step 2. Here's `--classic`, the default:
+The GIF above cycles through all three, in order: `--classic` (no flag),
+`--spec` (`-fs`), `--fd` (`-fd`) -- real `swift test` output from this
+project's own `EngineSpec.swift` suite, piped through each style. Full text
+samples of all three: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#output-styles).
 
-```
-NextCaltrainTests.xctest
+## Development
 
-GoodTimesSpec
-  GoodTimes
-    when 'today' is fixed via debugOverrideDotw
-      and today is Saturday (6)
-        ✔ computes tomorrow as Sunday (0), wrapping the week (0.0033 seconds)
-
-CaltrainServiceSpec
-  CaltrainService
-    #routes(from:to:scheduleType:)
-      for a direct diesel trip (Morgan Hill to Gilroy)
-        ✔ is not a transfer, since both endpoints are South County (0.0021 seconds)
-      for a direct electric trip (San Francisco to San Jose Diridon)
-        ✖ is not a transfer (FAILED - 1) (0.0019 seconds)
-    #nextIndex(trips:minutes:)
-      when given an empty trip list
-        ⊘ returns nil (0.0001 seconds)
-
-Failures:
-
-  1) CaltrainService #routes(from:to:scheduleType:) for a direct electric trip (San Francisco to San Jose Diridon) is not a transfer
-     XCTAssertFalse failed - expected false, got true
-     # /path/to/Tests/CaltrainServiceSpec.swift:55
+```bash
+swift build
+swift test
 ```
 
-Build-phase output (compiles, links, codesign) is suppressed. Lines
-containing `error:` are always passed through, so a real build failure is
-never hidden.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for project layout, how to
+add a render style, and the release process. See
+[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for how the comma
+disambiguation and failure folding actually work, and for known limitations.
 
-## More
+## Contributing
 
-How the comma-disambiguation, failure-folding, and fastlane integration
-actually work: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)
+Please send a PR! [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) covers getting
+set up.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

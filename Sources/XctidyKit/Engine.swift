@@ -204,21 +204,30 @@ enum AnsiColor: String {
 /// both colored (green/cyan/red); a failed leaf also keeps this project's
 /// "(FAILED - N)" cross-reference into the Failures section -- an
 /// improvement the original couldn't make (see docs/HOW_IT_WORKS.md,
-/// "Failure folding"). No run summary at the end, matching the original.
+/// "Failure folding").
 ///
-/// `.fd` is an actual clone of real RSpec's `-fd`/documentation formatter:
-/// a plain colored name with no glyph and no per-test time (this is the
-/// glyph-less tree `.classic` rendered before the swift.txt-fidelity
-/// rework), pending examples are yellow and say "(PENDING)" (RSpec's
-/// wording, not Xcode's "SKIPPED"), and the run ends with RSpec's own
-/// "Finished in N seconds" + "X examples, Y failures[, Z pending]" footer.
+/// `.fd` clones real RSpec's `-fd`/documentation formatter's *leaf*
+/// rendering: a plain colored name with no glyph and no per-test time,
+/// and pending examples are yellow and say "(PENDING)" (RSpec's own
+/// wording, not Xcode's "SKIPPED").
 ///
-/// `.spec` is the more common convention used by reporters like Mocha's
-/// default `spec` reporter or Jest: a green "✔" with the passing test's name
-/// dimmed to gray (de-emphasized, since passes aren't where attention is
-/// needed), a red "✗ name (FAILED - N)" for failures, and a cyan
-/// "- name (SKIPPED)" for skips -- plus, at the end, Mocha's own
-/// "N passing (Ttime s)" / "M failing" / "K pending" summary lines.
+/// `.spec` clones the more common convention used by reporters like Mocha's
+/// default `spec` reporter or Jest, again for *leaf* rendering only: a
+/// green "✔" with the passing test's name dimmed to gray (de-emphasized,
+/// since passes aren't where attention is needed), a red
+/// "✗ name (FAILED - N)" for failures, and a cyan "- name (SKIPPED)" for
+/// skips.
+///
+/// All three styles end with exactly the same thing: real xcbeautify's own
+/// run-results footer -- a green "Test Succeeded" (or red "Test Failed")
+/// headline, then "Tests Passed: X failed, Y skipped, Z total (N seconds)".
+/// `.fd` and `.spec` don't additionally print RSpec's/Mocha's own native run
+/// summary ("Finished in.../X examples", "N passing (Ttime)") -- an earlier
+/// version of this tool stacked that native summary before the xcbeautify
+/// footer, but seeing all three styles' real output side by side made that
+/// look like three different conventions for the same information instead
+/// of one shared, unambiguous ending. See `finish()`'s trailing
+/// `if exampleCount > 0` block.
 public enum RenderStyle: Equatable {
     case classic
     case fd
@@ -245,7 +254,6 @@ public final class Engine {
     private(set) public var failures: [EngineFailure] = []
     private var out: [String] = []
     private var exampleCount = 0
-    private var passedCount = 0
     private var pendingCount = 0
     private var lastTestTimeText: String?
 
@@ -304,12 +312,12 @@ public final class Engine {
             return  // pure bookkeeping; the tree is rendered from caseFinished
         }
         if let m = Matchers.executedSummary.firstMatch(in: line) {
-            // Suppressed from passthrough either way; under --fd we keep the
-            // captured time and render our own RSpec-style footer in
-            // finish() instead. There's one of these per nesting level
-            // (per-class, per-bundle, "All tests"); the last one wins, which
-            // is always the outermost/final total since XCTest finishes
-            // inner scopes before outer ones.
+            // Suppressed from passthrough either way; we keep the captured
+            // time for the shared closing footer's "(N seconds)" annotation
+            // in finish(), regardless of style. There's one of these per
+            // nesting level (per-class, per-bundle, "All tests"); the last
+            // one wins, which is always the outermost/final total since
+            // XCTest finishes inner scopes before outer ones.
             lastTestTimeText = m.group(1, in: line)
             return
         }
@@ -348,7 +356,6 @@ public final class Engine {
 
         switch state {
         case "passed":
-            passedCount += 1
             switch style {
             case .classic:
                 label = "\(colorize(.green, "✔")) \(name)\(timedSuffix(.green))"
@@ -414,41 +421,31 @@ public final class Engine {
                 emit("     # \(f.location)")
             }
         }
-        if style == .fd {
+        if exampleCount > 0 {
+            // Real xcbeautify's own run-results footer, lifted verbatim
+            // from a genuine `xcodebuild test` run. It's the *only* run
+            // summary any style prints -- .fd and .spec render their leaves
+            // differently above (see RenderStyle's doc comment) but don't
+            // get their own native RSpec-/Mocha-style run summary on top of
+            // it, so there's exactly one footer convention to read
+            // regardless of which --style/--format flag produced the tree
+            // above it. A green/red headline, then a "Tests Passed:" line
+            // that -- despite the name -- always lists all three counts,
+            // not just passes. Gated on exampleCount > 0 so noise-only
+            // input (no Test Case lines at all) still finishes as just
+            // "\n", matching xcodebuild's own behavior -- it only prints
+            // "** TEST SUCCEEDED **" when a test run actually happened,
+            // never on a noise-only/build-only invocation.
             emit()
+            let succeeded = failures.isEmpty
+            let color: AnsiColor = succeeded ? .green : .red
+            emit(colorize(color, succeeded ? "Test Succeeded" : "Test Failed"))
+            var summary = "Tests Passed: \(failures.count) failed, \(pendingCount) skipped, \(exampleCount) total"
             if let t = lastTestTimeText {
-                emit("Finished in \(t) seconds")
+                summary += " (\(t) seconds)"
             }
-            var counts = pluralized(exampleCount, "example")
-            counts += ", \(pluralized(failures.count, "failure"))"
-            if pendingCount > 0 {
-                counts += ", \(pendingCount) pending"
-            }
-            emit(counts)
-        }
-        if style == .spec {
-            // Mocha's own summary lines -- "N passing (Ttime)", then
-            // "M failing"/"K pending" only when nonzero, same as a real
-            // Mocha `spec` reporter run. xcodebuild reports the total run
-            // time in seconds (not Mocha's milliseconds), so the unit
-            // suffix here is "s", e.g. kotlin.txt's "72 passing (18031.0s)".
-            emit()
-            var passingLine = "\(passedCount) passing"
-            if let t = lastTestTimeText {
-                passingLine += " (\(t)s)"
-            }
-            emit(colorize(.green, passingLine))
-            if !failures.isEmpty {
-                emit(colorize(.red, "\(failures.count) failing"))
-            }
-            if pendingCount > 0 {
-                emit(colorize(.cyan, "\(pendingCount) pending"))
-            }
+            emit(colorize(color, summary))
         }
         return out.joined(separator: "\n") + "\n"
-    }
-
-    private func pluralized(_ n: Int, _ word: String) -> String {
-        "\(n) \(word)\(n == 1 ? "" : "s")"
     }
 }

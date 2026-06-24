@@ -272,6 +272,25 @@ final class EngineSpec: QuickSpec {
                     engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
                     expect(engine.finish()).to(contain("\u{1B}[32m"))
                 }
+
+                it("appends xcbeautify's 'Test Succeeded' / 'Tests Passed' footer") {
+                    let engine = Engine(atoms: [], tty: false)
+                    engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
+                    engine.feedLine(" Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.002) seconds")
+                    let output = engine.finish()
+                    expect(output).to(contain("Test Succeeded"))
+                    expect(output).to(contain("Tests Passed: 0 failed, 0 skipped, 1 total (0.001 seconds)"))
+                }
+
+                it("switches to 'Test Failed' and counts the failure in the footer") {
+                    let engine = Engine(atoms: [], tty: false)
+                    engine.feedLine("/path/to/Foo.swift:1: error: -[Suite foo] : it broke")
+                    engine.feedLine("Test Case '-[Suite foo]' failed (0.0019 seconds).")
+                    engine.feedLine(" Executed 1 test, with 1 failure (0 unexpected) in 0.0019 (0.003) seconds")
+                    let output = engine.finish()
+                    expect(output).to(contain("Test Failed"))
+                    expect(output).to(contain("Tests Passed: 1 failed, 0 skipped, 1 total (0.0019 seconds)"))
+                }
             }
 
             context("spec style") {
@@ -302,36 +321,16 @@ final class EngineSpec: QuickSpec {
                     expect(engine.finish()).to(contain("\u{1B}[90m"))
                 }
 
-                it("appends Mocha's 'N passing (Ttime)' summary line") {
+                it("ends with the shared xcbeautify-style footer, not Mocha's own 'N passing' summary") {
                     let engine = Engine(atoms: [], tty: false, style: .spec)
                     engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
-                    engine.feedLine(" Executed 1 test, with 0 failures (0 unexpected) in 0.026 (0.030) seconds")
-                    expect(engine.finish()).to(contain("1 passing (0.026s)"))
-                }
-
-                it("adds a failing count to the summary when there are failures") {
-                    let engine = Engine(atoms: [], tty: false, style: .spec)
-                    engine.feedLine("/path/to/Foo.swift:1: error: -[Suite foo] : it broke")
-                    engine.feedLine("Test Case '-[Suite foo]' failed (0.001 seconds).")
+                    engine.feedLine("Test Case '-[Suite bar]' skipped (0.001 seconds).")
+                    engine.feedLine(" Executed 2 tests, with 0 failures (0 unexpected) in 0.026 (0.030) seconds")
                     let output = engine.finish()
-                    expect(output).to(contain("0 passing"))
-                    expect(output).to(contain("1 failing"))
-                }
-
-                it("adds a pending count to the summary when there are skips") {
-                    let engine = Engine(atoms: [], tty: false, style: .spec)
-                    engine.feedLine("Test Case '-[Suite foo]' skipped (0.001 seconds).")
-                    let output = engine.finish()
-                    expect(output).to(contain("0 passing"))
-                    expect(output).to(contain("1 pending"))
-                }
-
-                it("omits failing/pending lines from the summary when both are zero") {
-                    let engine = Engine(atoms: [], tty: false, style: .spec)
-                    engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
-                    let output = engine.finish()
-                    expect(output).toNot(contain("failing"))
+                    expect(output).toNot(contain("passing"))
                     expect(output).toNot(contain("pending"))
+                    expect(output).to(contain("Test Succeeded"))
+                    expect(output).to(contain("Tests Passed: 0 failed, 1 skipped, 2 total (0.026 seconds)"))
                 }
             }
 
@@ -350,21 +349,33 @@ final class EngineSpec: QuickSpec {
                     expect(engine.finish()).to(contain("\u{1B}[33m"))
                 }
 
-                it("appends RSpec's Finished-in/summary-counts footer") {
+                it("ends with the shared xcbeautify-style footer, not RSpec's own 'Finished in' summary") {
                     let engine = Engine(atoms: [], tty: false, style: .fd)
                     engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
                     engine.feedLine("Test Case '-[Suite bar]' skipped (0.001 seconds).")
                     engine.feedLine(" Executed 2 tests, with 0 failures (0 unexpected) in 0.026 (0.030) seconds")
                     let output = engine.finish()
-                    expect(output).to(contain("Finished in 0.026 seconds"))
-                    expect(output).to(contain("2 examples, 0 failures, 1 pending"))
+                    expect(output).toNot(contain("Finished in"))
+                    expect(output).toNot(contain("examples,"))
+                    expect(output).to(contain("Test Succeeded"))
+                    expect(output).to(contain("Tests Passed: 0 failed, 1 skipped, 2 total (0.026 seconds)"))
                 }
+            }
 
-                it("omits the footer in classic (default) style") {
-                    let engine = Engine(atoms: [], tty: false)
-                    engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
-                    engine.feedLine(" Executed 1 test, with 0 failures (0 unexpected) in 0.001 (0.002) seconds")
-                    expect(engine.finish()).toNot(contain("Finished in"))
+            context("closing footer is identical across all three styles") {
+                it("ends every style with byte-for-byte the same 'Test Succeeded'/'Tests Passed' footer") {
+                    func run(_ style: RenderStyle) -> String {
+                        let engine = Engine(atoms: [], tty: false, style: style)
+                        engine.feedLine("Test Case '-[Suite foo]' passed (0.001 seconds).")
+                        engine.feedLine(
+                            " Executed 1 test, with 0 failures (0 unexpected) in 0.026 (0.030) seconds")
+                        return engine.finish()
+                    }
+                    let expectedFooter =
+                        "\nTest Succeeded\nTests Passed: 0 failed, 0 skipped, 1 total (0.026 seconds)\n"
+                    expect(run(.classic).hasSuffix(expectedFooter)).to(beTrue())
+                    expect(run(.fd).hasSuffix(expectedFooter)).to(beTrue())
+                    expect(run(.spec).hasSuffix(expectedFooter)).to(beTrue())
                 }
             }
         }

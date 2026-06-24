@@ -7,10 +7,13 @@ rendered in any of three named conventions (`--classic`/`--fd`/`--spec`; see
 `docs/HOW_IT_WORKS.md`, "Output styles"). It started as a proof-of-concept
 built ahead of proposing the same raw-output approach as a built-in mode for
 upstream [`cpisciotta/xcbeautify`](https://github.com/cpisciotta/xcbeautify)
-(draft proposal at `../xcbeautify-fd-PROPOSAL.md`, one level up, outside this
-repo so it isn't committed here) -- but it's since grown into its own
-standalone formatter with its own name and its own fastlane drop-in-
-replacement story.
+-- but it's since grown into its own standalone formatter with its own name
+and its own fastlane drop-in-replacement story. (A draft GitHub issue
+sketching that upstream pitch used to live as a loose file one level up,
+`../xcbeautify-fd-PROPOSAL.md`, outside this repo; its useful content has
+been folded into `docs/HOW_IT_WORKS.md`'s "Background" and "Known
+limitations" sections, and the original was scrubbed -- see "Where we left
+off" below.)
 
 The engine itself is a Swift port of `tools/test_formatter.py` from the
 `next-caltrain-swift` sibling repo (see that repo's `docs/COWORK.md`, "Test
@@ -51,10 +54,11 @@ themselves. `Tests/XctidyKitTests/EngineTests.swift` and
 `Sources/xctidy/main_copy2.swift` are in exactly that state right now (see
 "Where we left off" below for the full cleanup list).
 
-Nothing in this arc (the Quick/Nimble conversion, the render-style split, the
-rename) has been committed yet -- see `git status` below. Following the
-sibling repos' convention: hold off committing until the user has actually
-run the build and tests on their Mac and confirmed it works.
+Most of this arc -- the Quick/Nimble conversion, the render-style split, the
+rename -- is now committed (`b41656d`, after the user confirmed a real
+build/test run; see "Where we left off" below). Docs-in-progress edits
+within a single Cowork turn typically still sit uncommitted at any given
+moment -- check `git status` rather than assuming either way.
 
 ## Architecture
 
@@ -68,24 +72,40 @@ run the build and tests on their Mac and confirmed it works.
   styles it produces.
 - `Sources/xctidy/main.swift` -- CLI entry point. Reads stdin line by line,
   feeds `Engine`, prints `engine.finish()`. Flags: `--classic` (default),
-  `--fd`, `--spec`, or `--style <name>`. Positional arg is the specs
-  directory passed to `loadKnownAtoms`.
+  `--fd`, `--spec`, `--style <name>`/`--format <name>` (`fd` doubles as
+  `documentation`), or, for the two non-default styles, the concatenated
+  short forms `-fd`/`-fs` (the `-f<letter>` idiom RSpec itself uses --
+  `rspec -fd` is `-f` immediately followed by a single-letter formatter
+  code, not its own dedicated flag). No `-fc`: classic is already what no
+  flag gets you, so a short form for it would just reproduce default
+  behavior and confuse people about its purpose. Positional arg is the
+  specs directory passed to `loadKnownAtoms`.
 - `docs/HOW_IT_WORKS.md` -- the comma problem, failure folding, build-noise
   suppression, a full description of the three output styles, and where
   `xctidy` fits in a fastlane pipeline (`xcodebuild_formatter`). Read that
   before touching `RenderStyle` or `renderCase`/`finish()` in `Engine.swift`.
+- `docs/DEVELOPMENT.md` -- the contributor-facing build/test/project-layout
+  guide, separate from this file. This file (`COWORK.md`) is Cowork's own
+  session notes; `DEVELOPMENT.md` is the durable doc a human contributor
+  (not Cowork) would actually read.
 
 ### Render styles
 
 `.classic` (default) is the original Python tool's look: glyph (`✔`/`⊘`/`✖`)
-plus the per-test `(N seconds)` xcodebuild reports, no summary footer. `.fd`
-is a faithful clone of real RSpec's `-fd` formatter: no glyph, yellow
-`(PENDING)` instead of `(SKIPPED)`, plus RSpec's own `Finished in N seconds` /
-`X examples, Y failures[, Z pending]` footer. `.spec` is the Mocha/Jest
-`✔`-green/gray-name convention, ending in Mocha's own `N passing (Ttime s)` /
-`M failing` / `K pending` footer. Full detail in `docs/HOW_IT_WORKS.md`'s
-"Output styles" section -- don't duplicate it here, that doc is the source of
-truth.
+plus the per-test `(N seconds)` xcodebuild reports. `.fd` clones real
+RSpec's `-fd` formatter's *leaf* rendering only: no glyph, yellow
+`(PENDING)` instead of `(SKIPPED)`. `.spec` clones Mocha/Jest's
+`✔`-green/gray-name leaf convention, also leaf-only. All three styles end
+with the exact same closing footer, byte-for-byte: real xcbeautify's own
+`Test Succeeded`/`Test Failed` + `Tests Passed: X failed, Y skipped, Z
+total (N seconds)`. `.fd`/`.spec` do *not* additionally print RSpec's
+`Finished in.../X examples` or Mocha's `N passing (Ttime)` -- an earlier
+pass stacked that native summary before the xcbeautify footer, but real
+side-by-side output made the three styles' endings look inconsistent
+("the differences in the footer are confusing" -- direct user feedback),
+so the native summaries were dropped in favor of one shared, unambiguous
+ending. Full detail in `docs/HOW_IT_WORKS.md`'s "Output styles" section --
+don't duplicate it here, that doc is the source of truth.
 
 ## Tests
 
@@ -126,41 +146,55 @@ dropped); (3) added a Mocha-style `N passing (Ttime s)` summary footer to
 twice -- `xcbeautify-fd` → `xcpolish` (interim) → **`xctidy`** (the user's
 final answer, picked by browsing a thesaurus entry for "tidy" rather than
 from the xc-prefixed shortlist) -- across `Package.swift`, `Sources/`,
-`Tests/`, and all source comments; (5) rewrote `README.md`,
-`docs/HOW_IT_WORKS.md`, and this file to reflect the new name, the three
-styles' real current behavior, and `xctidy`'s positioning as a fastlane
-drop-in *replacement* formatter (same `xcodebuild_formatter` pipeline slot as
-xcbeautify/xcpretty, not a post-processor chained after either) -- including
-a concrete `Fastfile` `scan(xcodebuild_formatter: ...)` snippet, verified
-against fastlane's own docs.
+`Tests/`, and all source comments, plus the local project folder
+(`~/workspace/xcbeautify-fd` → `~/workspace/xctidy`); (5) rewrote
+`README.md`, `docs/HOW_IT_WORKS.md`, and this file to reflect the new name,
+the three styles' real current behavior, and `xctidy`'s positioning as a
+fastlane drop-in *replacement* formatter (same `xcodebuild_formatter`
+pipeline slot as xcbeautify/xcpretty, not a post-processor chained after
+either) -- including a concrete `Fastfile` `scan(xcodebuild_formatter:
+...)` snippet, verified against fastlane's own docs; (6) confirmed on the
+user's actual Mac -- `swift build -c release` succeeds and all three styles'
+real output matches what's documented (glyph+timing for `--classic`, the
+RSpec footer for `--fd`, the Mocha footer for `--spec`); (7) scrubbed
+`../xcbeautify-fd-PROPOSAL.md` (the draft upstream-xcbeautify GitHub issue
+mentioned above) after folding its useful technical content -- the
+ginkgo-fd/onsi-ginkgo#1670 provenance and the parallel-testing/Quick-Nimble-
+scope caveats -- into `docs/HOW_IT_WORKS.md`'s "Background" and new "Known
+limitations" sections; (8) rewrote `README.md` to mirror
+[`cpisciotta/xcbeautify`'s README](https://github.com/cpisciotta/xcbeautify/blob/main/README.md)
+structure (badge row, screenshot, checkbox feature list, Installation/Usage/
+Development/Contributing sections) and added a "Why xctidy instead of
+xcbeautify or xcpretty?" section giving an honest, scoped answer -- xctidy
+only solves the Quick/Nimble comma-disambiguation + failure-folding problem,
+it has no build-phase formatting, no Linux support, no JUnit, no CI-UI
+renderers, so xcbeautify/xcpretty are still the right tool outside that one
+case; (9) generated `.readme-images/example.png`, a synthetic terminal
+screenshot of `--classic` output (light theme, traffic-light window chrome,
+built with Pillow since the sandbox has no headless browser) to stand in
+for the real screenshot the user may swap in later; (10) added
+`docs/DEVELOPMENT.md` as the contributor-facing counterpart to this file
+(build/test/project-layout/releasing, kept separate from these Cowork
+session notes).
 
 Status as of this doc:
 
 - `Engine.swift`, `main.swift`, `EngineSpec.swift`, and `AnsiColorDemoSpec.swift`
   are all consistent with each other under the `xctidy` name and the 3-way
-  style split.
-- `README.md` and `docs/HOW_IT_WORKS.md` describe all three styles accurately
-  and document the fastlane integration.
-- `../xcbeautify-fd-PROPOSAL.md` (outside this repo) was checked earlier in
-  this arc and doesn't mention `--fd`/`--spec`/output styles at all, so it
-  didn't need updating for the style work -- it also predates the rename to
-  `xctidy` and hasn't been revisited for that, since it lives outside this
-  repo and outside Cowork's reach.
-- **Not yet done**: no `swift build`/`swift test` has been run against any of
-  this -- there's no Swift toolchain in the sandbox. Next step for whoever
-  picks this up is to run, on a real Mac, from the repo root:
-
-  ```
-  swift build -c release
-  swift test 2>&1 | .build/release/xctidy Tests/XctidyKitTests --classic
-  swift test 2>&1 | .build/release/xctidy Tests/XctidyKitTests --fd
-  swift test 2>&1 | .build/release/xctidy Tests/XctidyKitTests --spec
-  ```
-
-  `--classic` should show a glyph + `(N seconds)` per leaf; `--fd` should
-  show yellow `(PENDING)` and end with a `Finished in...`/`N examples...`
-  footer; `--spec` should show green `✔`/gray names and end with `N passing
-  (Ttime s)`.
+  style split, and **confirmed working** via a real `swift build`/`swift
+  test` run on the user's Mac (not just reasoned-about from the sandbox).
+- `README.md`, `docs/HOW_IT_WORKS.md`, and `docs/DEVELOPMENT.md` describe all
+  three styles accurately and document the fastlane integration.
+- The GitHub repo rename is **done** -- `git remote -v` now shows
+  `git@github.com:woodie/xctidy.git`, so that's no longer outstanding.
+- Badges: README currently has only Swift-version and License badges (both
+  true today, no infra needed). The user explicitly deferred CI/release
+  badges -- "When we get workers set up, we can add badges" -- so there's no
+  `.github/workflows/` CI yet and none should be added until asked. A
+  commented-out placeholder in `README.md` marks where those two badges go
+  once that exists.
+- **Not yet done**: nothing else build/test-related. Remaining work is file
+  cleanup (below) and committing this session's docs work.
 - Cleanup the user still needs to run themselves (sandbox can't delete
   files -- see "Edit cycle" above):
 
@@ -169,12 +203,60 @@ Status as of this doc:
   git rm Sources/xctidy/main_copy2.swift
   rm Sources/xctidy/_scratch_test.txt
   rmdir Sources/TestDirRename2
+  rm ~/workspace/xcbeautify-fd-PROPOSAL.md
   ```
 
-- `git status` at the time of writing: everything from the Quick/Nimble
-  conversion onward -- the render-style split, both renames, and this docs
-  pass -- is sitting in the working tree, unpushed and uncommitted. Repo
-  history is still just two commits (`d8c27e5` initial scaffold, `ecf5d6d`
-  the first Swift Package implementation). Per the sibling repos'
-  convention: hold off committing until the user has run the build/tests
-  above and confirmed it works.
+- `git status` at the time of writing: the Quick/Nimble conversion, the
+  render-style split, and both renames are already committed as `b41656d`
+  ("Rename xcbeautify-fd to xctidy; add --classic/--fd/--spec styles") --
+  repo history is `d8c27e5` (initial scaffold) → `ecf5d6d` (first Swift
+  Package implementation) → `b41656d`. Only this docs pass (this file,
+  `docs/HOW_IT_WORKS.md`, the new `README.md`/`docs/DEVELOPMENT.md`/
+  `.readme-images/example.png`) is uncommitted and unpushed right now.
+
+## Later session: footer iteration, flag redesign, footer un-stacking
+
+After the above was committed, several more rounds happened against the
+real built binary on the user's Mac: (1) added the xcbeautify-style
+`Test Succeeded`/`Tests Passed` footer to `--classic`; (2) extended it to
+`--fd`/`--spec` too, stacked *after* each style's own native summary
+(RSpec's `Finished in.../X examples`, Mocha's `N passing (Ttime)`);
+(3) added `--format <name>`/`-fd`/`-fs` as aliases alongside the existing
+`--classic`/`--fd`/`--spec`/`--style <name>` flags, then dropped a `-fc`
+short form that was floated for symmetry -- the user pointed out it "does
+nothing" since classic is already the default, so a short form for it
+would only confuse people; (4) after seeing real terminal output for all
+three styles side by side, the user said "the differences in the footer are
+confusing" -- the stacked native summaries made `--classic`/`--fd`/`--spec`
+end with a different shape (0, 2, or 1-3 extra lines) before reaching the
+identical closing two lines. Resolved by **removing** the native
+RSpec/Mocha summaries entirely rather than keeping them: `--fd`/`--spec`
+still render their leaves in RSpec's/Mocha's own style, but the closing
+footer is now byte-for-byte identical across all three styles, no
+exceptions. `Engine.swift` (`finish()`, the `RenderStyle` doc comment),
+`EngineSpec.swift`, `main.swift`'s usage comment, `README.md`,
+`docs/HOW_IT_WORKS.md`, and the "Render styles" section above were all
+updated to match. The user then confirmed this on their own Mac --
+pasted three real `swift test | xctidy` screenshots dogfooding
+`EngineSpec.swift`'s own suite (33 examples, 0 failures) across all three
+styles, all ending in byte-for-byte the same footer -- so this is no
+longer unverified.
+
+The user then built `docs/example.gif` themselves (a real terminal capture,
+not a Cowork-synthesized one) cycling through all three styles, and asked
+Cowork to check/fix it: original frame order was `fd -> spec -> classic` at
+2000ms/frame; Cowork reordered it to the requested `--classic -> --spec ->
+--fd` (`na -> fs -> fd`) at 3000ms/frame and saved it back to the same path.
+Cowork also built its own synthetic comparison GIF
+(`.readme-images/footer-consistency.gif`, generated by
+`make_footer_gif.py` -- not checked into the repo's working tree from this
+session, just produced ad hoc for comparison) reconstructed from the literal
+`it(...)` strings in `EngineSpec.swift`, labeled per-frame with the style
+name/flag; useful for spotting that the user's real terminal doesn't
+visibly render `--spec`'s gray-dimmed passing names (ANSI SGR `2`/faint is
+inconsistently supported across terminal emulators -- likely just a
+terminal-rendering quirk, not an xctidy bug). The user picked their own real
+GIF over Cowork's synthetic one. `README.md`'s screenshot was swapped from
+the static `.readme-images/example.png` to `docs/example.gif`, and the
+"screenshot above is `--classic`" sentence in the "Output styles" section
+was rewritten to describe the cycling GIF instead.

@@ -37,9 +37,24 @@ hidden just because it didn't match a known test-line pattern.
 
 ## Output styles
 
-Three named styles, picked with `--classic`/`--fd`/`--spec` (or `--style
-<name>`). All three share the same nested tree and the same `Failures:`
-folding -- only a leaf's glyph/color/text and the run-level summary change.
+Three named styles, picked with `--classic`/`--fd`/`--spec`, with `--style
+<name>`/`--format <name>` as longer-form equivalents (`fd` doubles as
+`documentation`, RSpec's own name for that formatter), or, for the two
+non-default styles, the concatenated short forms `-fd`/`-fs` -- the
+`-f<letter>` idiom RSpec itself uses, since `rspec -fd` is really `-f`
+(`--format`) immediately followed by a single-letter formatter code, not a
+dedicated flag of its own. Classic has no such short form: it's already
+what running with no flag at all gets you, so a `-fc` that just reproduced
+default behavior would only confuse people about what it's for. All three
+styles share the same nested tree, the same `Failures:` folding, and the
+exact same closing xcbeautify-style `Test Succeeded`/`Tests Passed: ...`
+footer, byte-for-byte -- only a leaf's glyph/color/text changes between
+styles. `--fd` and `--spec` don't additionally print RSpec's/Mocha's own
+native run summary on top of that shared footer; an earlier version of this
+tool did stack that native summary before the xcbeautify footer, but seeing
+the three styles' real output side by side made the run-ending look like
+three different conventions for the same information, which defeated the
+point of having one shared footer in the first place.
 
 `--classic` (default) matches what the original
 [`test_formatter.py`](https://github.com/woodie/next-caltrain-swift) actually
@@ -49,48 +64,56 @@ plus the per-test `(N seconds)` `xcodebuild` itself reports, both colored
 into the `Failures:` section -- an improvement the original couldn't make,
 since by the time text reached it, xcbeautify had already joined a failing
 test's name and reason with the same separator the name uses internally (see
-"Failure folding" above). No run summary at the end, matching the original.
+"Failure folding" above). The run ends with real xcbeautify's own
+run-results footer: a green `Test Succeeded` (or red `Test Failed`)
+headline, then `Tests Passed: X failed, Y skipped, Z total (N seconds)` --
+that line lists all three counts despite its name, matching genuine
+xcbeautify output verbatim.
 
 ```
 ✔ is not a transfer, since both endpoints are South County (0.0021 seconds)
 ✖ is not a transfer (FAILED - 1) (0.0019 seconds)
 ⊘ returns nil (0.0001 seconds)
+
+Test Failed
+Tests Passed: 1 failed, 1 skipped, 3 total (0.0074 seconds)
 ```
 
-`--fd` is an actual clone of real RSpec's `-fd`/documentation formatter, not
-just a lookalike: a plain colored name, no glyph, no per-test time. Pending
-examples are yellow and say `(PENDING)` (RSpec's own wording, instead of
-Xcode's "SKIPPED"), and the run ends with RSpec's own summary footer --
-`Finished in N seconds` followed by `X examples, Y failures[, Z pending]`.
-Reach for this if you want output indistinguishable from a real `rspec -fd`
-run.
+`--fd` clones real RSpec's `-fd`/documentation formatter's leaf rendering,
+not just a lookalike: a plain colored name, no glyph, no per-test time.
+Pending examples are yellow and say `(PENDING)` (RSpec's own wording,
+instead of Xcode's "SKIPPED"). It does not additionally print RSpec's own
+`Finished in N seconds` / `X examples, Y failures[, Z pending]` summary --
+the run ends with the same xcbeautify-style `Test Succeeded`/
+`Tests Passed: ...` footer every style ends with (see "Output styles"
+above). Reach for this if you want RSpec's `-fd` look for the test tree
+itself, with xcbeautify's verdict line at the end.
 
 ```
 is not a transfer, since both endpoints are South County
 is not a transfer (FAILED - 1)
 returns nil (PENDING)
 
-Finished in 0.026 seconds
-3 examples, 1 failure, 1 pending
+Test Failed
+Tests Passed: 1 failed, 1 skipped, 3 total (0.026 seconds)
 ```
 
-`--spec` is the more common convention used by reporters like Mocha's
-default `spec` reporter or Jest: a green `✔` with the passing test's name
-dimmed to gray (de-emphasized, since passes aren't where attention is
-needed), a red `✗ name (FAILED - N)` for failures, and a cyan
-`- name (SKIPPED)` for skips. The run ends with Mocha's own summary lines --
-`N passing (Ttime s)`, then `M failing`/`K pending` only when nonzero (the
-"s" suffix because `xcodebuild` reports the total run time in seconds, not
-Mocha's milliseconds).
+`--spec` clones the more common convention used by reporters like Mocha's
+default `spec` reporter or Jest, again for leaf rendering only: a green `✔`
+with the passing test's name dimmed to gray (de-emphasized, since passes
+aren't where attention is needed), a red `✗ name (FAILED - N)` for
+failures, and a cyan `- name (SKIPPED)` for skips. It does not additionally
+print Mocha's own `N passing (Ttime s)` / `M failing` / `K pending` summary
+-- the run ends with the same xcbeautify-style `Test Succeeded`/
+`Tests Passed: ...` footer every style ends with.
 
 ```
 ✔ is not a transfer, since both endpoints are South County
 ✗ is not a transfer (FAILED - 1)
 - returns nil (SKIPPED)
 
-3 passing (18031.0s)
-1 failing
-1 pending
+Test Failed
+Tests Passed: 1 failed, 1 skipped, 5 total (18031.0 seconds)
 ```
 
 ## Where this fits in a fastlane pipeline
@@ -118,6 +141,25 @@ omitted entirely) or `--spec` to change styles; the trailing `Tests` is the
 positional path to your specs directory, used for the comma-disambiguation
 described above.
 
+## Known limitations
+
+**Quick/Nimble-on-XCTest only.** `xctidy` is scoped to suites built on
+Quick/Nimble's `describe`/`context`/`it`, which XCTest sees as one
+comma-flattened selector name (see "The comma problem" above). It doesn't
+apply the same way to Swift Testing's native macro syntax (`@Test`,
+`@Suite`) -- that's a different output shape entirely, not just a different
+flag.
+
+**Parallel testing isn't handled yet.** The tree-rendering dedup (collapsing
+a shared `describe`/`context` prefix between adjacent leaves -- see
+`renderCase` in `Engine.swift`) keeps a single global "last path." Under
+`xcodebuild`'s `-parallel-testing-enabled`, test-case lines from different
+destinations can interleave, which would corrupt that dedup. The fix is
+likely straightforward -- per-destination dedup state instead of one global
+one -- but nothing in `Engine.swift` does this yet, and there's no test
+covering parallel output. Worth fixing before relying on `xctidy` for a
+parallelized test plan.
+
 ## Background
 
 This engine started as a Python post-processor
@@ -131,7 +173,23 @@ the same separator, making it impossible to fold failures into the tree.
 output directly instead, removing that dependency and adding the failure
 folding the Python version couldn't do.
 
-It started as a proof-of-concept exploring whether xcbeautify could support
-this as a built-in mode -- that pitch still exists as a draft proposal -- but
-it has since grown into its own standalone formatter, with its own name and
-its own drop-in story for a fastlane pipeline (see above).
+It's not the first time this exact problem has come up: a near-identical
+comma-disambiguation approach was built for Go's Ginkgo as
+[ginkgo-fd](https://github.com/woodie/ginkgo-fd), with a related fix
+([onsi/ginkgo#1670](https://github.com/onsi/ginkgo/pull/1670)) merged
+upstream into Ginkgo itself.
+
+`xctidy` started as a proof-of-concept exploring whether
+[xcbeautify](https://github.com/cpisciotta/xcbeautify) could support this as
+a built-in renderer mode rather than a separate tool: xcbeautify's `Parser`
+already recognizes every line this needs (`TestSuiteStartedCaptureGroup`,
+`TestCaseStartedCaptureGroup`, `TestCasePassedCaptureGroup`,
+`FailingTestCaptureGroup`, and so on), and it already ships alternate
+renderers (`--renderer github-actions`/`teamcity`/`azure-devops-pipelines`),
+so a documentation-style mode looked like it could plausibly reuse that same
+extension point instead of needing new parsing. That pitch was never filed
+upstream, but it's the reason `xctidy` reads `xcodebuild`'s raw output
+directly rather than post-processing some other tool's text -- the same
+property that makes failure-folding possible (see "Failure folding" above).
+`xctidy` has since grown into its own standalone formatter, with its own
+name and its own drop-in story for a fastlane pipeline (see above).
