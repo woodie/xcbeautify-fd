@@ -260,3 +260,68 @@ GIF over Cowork's synthetic one. `README.md`'s screenshot was swapped from
 the static `.readme-images/example.png` to `docs/example.gif`, and the
 "screenshot above is `--classic`" sentence in the "Output styles" section
 was rewritten to describe the cycling GIF instead.
+
+**Final outcome, after the user actually committed and pushed (`0b3d201`,
+"Cloean up test footer and update README."):** the animated GIF turned out
+to be problematic (not specified exactly how -- e.g. GitHub README preview,
+file size, or just not looking right -- the user only said "the animated
+gif was problematic"), so the user replaced it with a new static screenshot,
+`docs/example.png`, of the `--fd` style specifically, and pointed README's
+top image at that instead. `docs/example.gif` is still committed in the
+repo (`0b3d201` added both files) but is now unreferenced from `README.md`.
+Cowork caught that the "Output styles" caption paragraph still described
+"the GIF above cycles through all three" -- now stale/wrong against the
+static `--fd` PNG actually in place -- and rewrote it to say "The screenshot
+above is `--fd`" instead. If the unreferenced `docs/example.gif` should be
+removed from the repo entirely, that's a `git rm docs/example.gif` for the
+user to run (see "Edit cycle" above -- sandbox can't delete files in the
+mounted workspace).
+
+The user then asked to switch the README's "Build from source" install
+path to `make install`, matching real xcbeautify's exact 3-line pattern
+(`git clone` / `cd` / `make install`) rather than the manual `swift build -c
+release && cp .build/release/xctidy /usr/local/bin/` it had. xcbeautify's
+own `Makefile` was fetched from GitHub as a reference, but only a small
+subset of it actually applies here -- xcbeautify's has Linux/Docker cross-
+compile packaging, a `release`/version-bump target (sed-editing a
+`Version.swift` xctidy doesn't have), `tools/format`/`tools/lint`/`tools/
+measure` scripts that don't exist in this repo, and a `brew bundle` `deps`
+target with no `Brewfile` here -- none of that was copied in, since xctidy
+has no CI, no Linux support, and no such tooling yet (copying it in would
+just be dead make targets). Added a new top-level `Makefile` with the parts
+that do apply: `build`/`test`/`install`/`uninstall`/`clean`/`xcode`,
+`PREFIX`-overridable (defaults to `/usr/local`, same as xcbeautify's).
+Verified with `make -n install`/`make -n build`/`make -n uninstall` (dry-run,
+since the sandbox has no `swift` on `PATH` to do a real build) -- recipe
+lines use real tabs (confirmed via `cat -A`), and the printed commands match
+intent; `BUILD_DIRECTORY` resolved to empty in the dry run only because
+`swift build --show-bin-path` couldn't run here, which will resolve
+correctly on the user's Mac. `README.md`'s "Build from source" section
+updated to the 3-line pattern; `docs/DEVELOPMENT.md`'s "Build" section
+(which still documents raw `swift build`/`swift build -c release` for
+day-to-day contributor iteration) got a short added note pointing at the
+Makefile as the end-user install path instead.
+
+The user then gave editorial feedback on the README itself: (1) general
+praise for xcbeautify's README structure, with the caveat that its
+"GitHub Actions"/"TeamCity"/"Azure DevOps Pipeline" `Usage` subsections
+should live elsewhere rather than in the main flow -- noted as taste/
+context, but no action taken in this repo since `xctidy` has no analogous
+CI-renderer sections to relocate (see "Known limitations": no CI-UI
+renderers). Worth remembering if `xctidy` ever grows renderer-specific
+integration docs. (2) Replaced the two-paragraph intro ("xctidy turns flat,
+comma-joined... It reads xcodebuild's raw output directly... not a
+post-processor...") with a single bolded sentence: "xctidy brings RSpec's
+documentation format and Mocha's spec output format to `xcodebuild`." The
+dropped "formatter, not a post-processor" framing isn't lost -- it's still
+covered in the "Why xctidy instead of xcbeautify or xcpretty?" section
+right below ("Both read the same raw xcodebuild protocol, so they slot into
+the same pipeline position..."). (3) Replaced the checkbox-style `Features`
+list (which mixed shipped features with two `[ ]` not-yet items linking to
+`docs/HOW_IT_WORKS.md#known-limitations`) with a plain 4-bullet list per
+the user's exact wording: concise/readable output, familiar RSpec/Mocha
+conventions, the fastlane drop-in, Swift static binary. This drops the
+README's only link to the Known limitations section -- the limitations
+themselves are still fully documented in `docs/HOW_IT_WORKS.md` and
+`docs/DEVELOPMENT.md`, just no longer surfaced from the README itself. Flag
+this if discoverability of that section from the README matters later.

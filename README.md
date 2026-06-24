@@ -7,13 +7,8 @@
 
 ![Example Screenshot](docs/example.png)
 
-**`xctidy` turns flat, comma-joined `xcodebuild test` output for
-[Quick](https://github.com/Quick/Quick)/[Nimble](https://github.com/Quick/Nimble)
-suites into a readable, nested `describe`/`context`/`it` tree.**
-
-It reads `xcodebuild`'s raw output directly -- the same protocol xcbeautify
-and xcpretty both parse -- so it's a formatter in its own right, not a
-post-processor chained after either of them.
+**xctidy brings RSpec's documentation format and Mocha's spec output format
+to `xcodebuild`.**
 
 ## Why xctidy instead of xcbeautify or xcpretty?
 
@@ -53,20 +48,10 @@ same invocation.
 
 ## Features
 
-- [x] Disambiguates Quick/Nimble's comma-flattened XCTest names back into a
-  real nested tree
-- [x] Folds a failing test's reason and `file:line` into a dedicated
-  `Failures:` section, from `xcodebuild`'s raw output directly
-- [x] Three familiar output conventions -- `--classic`, RSpec's `-fd`,
-  Mocha's `spec` -- pick with a flag
-- [x] Drop-in `xcodebuild_formatter` for fastlane's `scan`/`gym`/`snapshot`;
-  no xcbeautify/xcpretty install required
-- [x] Written in Swift: compiles to a static binary, no Ruby/Node dependency
-  added to your pipeline
-- [ ] Swift Testing's `@Test`/`@Suite` macro syntax -- not yet, see
-  [Known limitations](docs/HOW_IT_WORKS.md#known-limitations)
-- [ ] Parallel-testing dedup (`-parallel-testing-enabled`) -- not yet, see
-  [Known limitations](docs/HOW_IT_WORKS.md#known-limitations)
+- Test output is more concise and readable
+- Familiar output conventions from RSpec and Mocha
+- Drop-in `xcodebuild_formatter` for fastlane's `scan`/`gym`/`snapshot`
+- Written in Swift: compiles to a static binary
 
 ## Installation
 
@@ -75,8 +60,7 @@ same invocation.
 ```bash
 git clone https://github.com/woodie/xctidy.git
 cd xctidy
-swift build -c release
-cp .build/release/xctidy /usr/local/bin/
+make install
 ```
 
 ## Usage
@@ -146,10 +130,10 @@ behavior would only confuse people about what it's for. `--style <name>`
 (with `fd` in place of `documentation`) still works too -- pick whichever
 reads best in your pipeline.
 
-The GIF above cycles through all three, in order: `--classic` (no flag),
-`--spec` (`-fs`), `--fd` (`-fd`) -- real `swift test` output from this
-project's own `EngineSpec.swift` suite, piped through each style. Full text
-samples of all three: [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#output-styles).
+The screenshot above is `--fd` -- real `swift test` output from this
+project's own `EngineSpec.swift` suite, piped through that style. Full text
+samples of all three styles:
+[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#output-styles).
 
 ## Development
 

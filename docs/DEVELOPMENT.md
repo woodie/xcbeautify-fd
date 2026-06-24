@@ -21,6 +21,14 @@ swift build            # debug build, for local iteration
 swift build -c release # what you'd actually install/ship
 ```
 
+A `Makefile` wraps the release build for end users -- `make install` builds
+and copies the binary to `$(PREFIX)/bin` (`PREFIX` defaults to
+`/usr/local`; override with `make install PREFIX=/some/path`). `make
+uninstall`/`make clean`/`make test`/`make xcode` (open the generated Xcode
+project) are also available. None of that replaces `swift build`/`swift
+test` for day-to-day contributor iteration -- the Makefile is there for the
+README's "Build from source" install path.
+
 ## Test
 
 ```bash
