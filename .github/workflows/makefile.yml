@@ -1,4 +1,4 @@
-name: Makefile CI
+name: CI
 
 on:
   push:
@@ -6,22 +6,25 @@ on:
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    # xctidy parses xcodebuild's own output, so it only ever runs against a
+    # real Xcode/macOS build -- see docs/HOW_IT_WORKS.md's "no Linux
+    # support" note. macos-latest ships Xcode + Swift preinstalled already.
+    runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-    - name: configure
-      run: ./configure
+      - name: Build
+        run: make build
 
-    - name: Install dependencies
-      run: make
-
-    - name: Run check
-      run: make check
-
-    - name: Run distcheck
-      run: make distcheck
+      - name: Test
+        run: make test
