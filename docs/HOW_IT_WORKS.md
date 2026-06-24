@@ -37,26 +37,19 @@ hidden just because it didn't match a known test-line pattern.
 
 ## Output styles
 
-Three named styles, picked with `--classic`/`--fd`/`--spec`, with `--style
-<name>`/`--format <name>` as longer-form equivalents (`fd` doubles as
-`documentation`, RSpec's own name for that formatter), or, for the two
-non-default styles, the concatenated short forms `-fd`/`-fs` -- the
-`-f<letter>` idiom RSpec itself uses, since `rspec -fd` is really `-f`
-(`--format`) immediately followed by a single-letter formatter code, not a
-dedicated flag of its own. Classic has no such short form: it's already
-what running with no flag at all gets you, so a `-fc` that just reproduced
-default behavior would only confuse people about what it's for. All three
-styles share the same nested tree, the same `Failures:` folding, and the
-exact same closing xcbeautify-style `Test Succeeded`/`Tests Passed: ...`
-footer, byte-for-byte -- only a leaf's glyph/color/text changes between
-styles. `--fd` and `--spec` don't additionally print RSpec's/Mocha's own
-native run summary on top of that shared footer; an earlier version of this
-tool did stack that native summary before the xcbeautify footer, but seeing
-the three styles' real output side by side made the run-ending look like
-three different conventions for the same information, which defeated the
-point of having one shared footer in the first place.
+Three named styles: the default (no flag), `-fd` (or `--format
+documentation`), and `-fs` (or `--format spec`). All three share the same
+nested tree, the same `Failures:` folding, and the exact same closing
+xcbeautify-style `Test Succeeded`/`Tests Passed: ...` footer, byte-for-byte
+-- only a leaf's glyph/color/text changes between styles. `-fd` and `-fs`
+don't additionally print RSpec's/Mocha's own native run summary on top of
+that shared footer; an earlier version of this tool did stack that native
+summary before the xcbeautify footer, but seeing the three styles' real
+output side by side made the run-ending look like three different
+conventions for the same information, which defeated the point of having
+one shared footer in the first place.
 
-`--classic` (default) matches what the original
+The default (no flag) matches what the original
 [`test_formatter.py`](https://github.com/woodie/next-caltrain-swift) actually
 produced: every leaf gets a glyph -- `✔` passed, `⊘` skipped, `✖` failed --
 plus the per-test `(N seconds)` `xcodebuild` itself reports, both colored
@@ -79,7 +72,7 @@ Test Failed
 Tests Passed: 1 failed, 1 skipped, 3 total (0.0074 seconds)
 ```
 
-`--fd` clones real RSpec's `-fd`/documentation formatter's leaf rendering,
+`-fd` clones real RSpec's `-fd`/documentation formatter's leaf rendering,
 not just a lookalike: a plain colored name, no glyph, no per-test time.
 Pending examples are yellow and say `(PENDING)` (RSpec's own wording,
 instead of Xcode's "SKIPPED"). It does not additionally print RSpec's own
@@ -98,7 +91,7 @@ Test Failed
 Tests Passed: 1 failed, 1 skipped, 3 total (0.026 seconds)
 ```
 
-`--spec` clones the more common convention used by reporters like Mocha's
+`-fs` clones the more common convention used by reporters like Mocha's
 default `spec` reporter or Jest, again for leaf rendering only: a green `✔`
 with the passing test's name dimmed to gray (de-emphasized, since passes
 aren't where attention is needed), a red `✗ name (FAILED - N)` for
@@ -130,16 +123,15 @@ swap the value, don't add a stage after it:
 lane :test do
   scan(
     scheme: "MyApp",
-    xcodebuild_formatter: "/usr/local/bin/xctidy --fd Tests"
+    xcodebuild_formatter: "/usr/local/bin/xctidy -fd Tests"
   )
 end
 ```
 
 No xcbeautify or xcpretty install required -- `xctidy` reads `xcodebuild`'s
-output on its own. Swap `--fd` for `--classic` (the default if the flag is
-omitted entirely) or `--spec` to change styles; the trailing `Tests` is the
-positional path to your specs directory, used for the comma-disambiguation
-described above.
+output on its own. Swap `-fd` for `-fs`, or drop the flag entirely for the
+default, to change styles; the trailing `Tests` is the positional path to
+your specs directory, used for the comma-disambiguation described above.
 
 ## Known limitations
 

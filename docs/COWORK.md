@@ -362,3 +362,39 @@ Two open questions from earlier rounds remain unanswered: whether to
 `README.md` since the `--fd` PNG swap), and whether the Known-limitations
 link should be restored to the README now that two separate edits have
 removed it from the main flow.
+
+The user then made a further README edit themselves (uncommitted at time
+of writing) swapping every remaining `--fd` for the short form `-fd`
+(fastlane example, Output styles table, the `--fd` screenshot caption) and
+rewording the table's Convention column ("RSpec's doc format"/"Mocha's spec
+format"). That, plus an explicit instruction -- "I just want to have `-fd`,
+`-fs` and `--format documentation|spec` so let's get rid of everything else
+in `docs/HOW_IT_WORKS.md`" -- made clear this isn't just a docs-wording
+pass, it's a real flag-surface decision: drop `--classic`/`--fd`/`--spec`
+(the long boolean flags) and `--style` (the `--format` alias) entirely.
+Since the project's own convention treats the docs as a description of
+actual behavior, not aspirational copy, Cowork changed the code to match
+rather than leaving docs and `main.swift` out of sync: `Sources/xctidy/
+main.swift`'s flag-parsing switch now only recognizes `-fd`, `-fs`, and
+`--format documentation`/`--format spec` (the `--classic`/`--fd`/`--spec`
+cases, the `--style` alias, and `--format classic`/`--format fd` were all
+removed), and its usage comment was rewritten to match. `Engine.swift`'s
+two comments mentioning `--fd`/`--spec`/`--style`/`--format` (around the
+classic-skip-glyph rationale and the shared-footer note) were updated to
+the new flag names -- the `RenderStyle` enum's case names (`.classic`/
+`.fd`/`.spec`) are untouched, this is CLI surface only, not a rename of the
+internal styles. `docs/HOW_IT_WORKS.md`'s "Output styles" intro paragraph
+was rewritten to name only the new surface (dropping the `-f<letter>`-idiom
+digression and the now-pointless "no `-fc`" aside), its three per-style
+paragraphs and the fastlane-pipeline section had their `--fd`/`--classic`/
+`--spec` mentions swapped to `-fd`/`-fs`/"default (no flag)", and the
+ASCII-art sample blocks were left untouched (they're leaf-rendering output,
+not flag syntax). `docs/DEVELOPMENT.md`'s one mention of the three styles
+was updated the same way. Verified with a repo-wide grep for `--classic`/
+`--fd`/`--spec`/`--style` after the edits -- zero hits left outside this
+file's own historical narrative; `swift build`/`swift test` weren't run
+(no `swift` on this sandbox's `PATH`, same limitation as the Makefile
+round) so the user should run `swift test` on their Mac to confirm
+`EngineSpec.swift` still passes -- nothing in the test suite invokes CLI
+flags directly (it tests `Engine`/`RenderStyle` directly), so this should
+be a no-op for tests, but worth a real run regardless.

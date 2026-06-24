@@ -74,7 +74,7 @@ caveats that come with testing an `.executableTarget` directly.
 
 ## Adding or changing a render style
 
-The three styles (`--classic`/`--fd`/`--spec`) are the `RenderStyle` enum in
+The three styles (default/`-fd`/`-fs`) are the `RenderStyle` enum in
 `Sources/XctidyKit/Engine.swift`; per-style leaf/footer behavior lives in
 `Engine`'s `renderCase`/`finish()`. If you add a style or change an
 existing one:

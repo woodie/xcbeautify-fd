@@ -370,8 +370,8 @@ public final class Engine {
             case .classic:
                 // No "(SKIPPED)" text suffix here, deliberately -- the
                 // original test_formatter.py distinguished skips from
-                // passes by glyph (⊘ vs ✔) and color alone. --fd and
-                // --spec both spell it out in words; reach for those if
+                // passes by glyph (⊘ vs ✔) and color alone. -fd and
+                // -fs both spell it out in words; reach for those if
                 // a glyph-only signal isn't enough in your terminal/font.
                 label = "\(colorize(.cyan, "⊘")) \(name)\(timedSuffix(.cyan))"
             case .fd:
@@ -428,7 +428,7 @@ public final class Engine {
             // differently above (see RenderStyle's doc comment) but don't
             // get their own native RSpec-/Mocha-style run summary on top of
             // it, so there's exactly one footer convention to read
-            // regardless of which --style/--format flag produced the tree
+            // regardless of which -fd/-fs/--format flag produced the tree
             // above it. A green/red headline, then a "Tests Passed:" line
             // that -- despite the name -- always lists all three counts,
             // not just passes. Gated on exampleCount > 0 so noise-only

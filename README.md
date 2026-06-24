@@ -63,7 +63,7 @@ no new stage needed:
 lane :test do
   scan(
     scheme: "MyApp",
-    xcodebuild_formatter: "/usr/local/bin/xctidy --fd Tests"
+    xcodebuild_formatter: "/usr/local/bin/xctidy -fd Tests"
   )
 end
 ```
@@ -79,7 +79,7 @@ All three end with the same xcbeautify-style footer.
 | -fd | RSpec's doc format | Plain colored name, yellow `(PENDING)` for skips |
 | -fs | Mocha's spec format | Green `✔` + gray name, red `✗ name (FAILED - N)` |
 
-The screenshot above is `--fd`. Full samples of all three styles:
+The screenshot above is `-fd`. Full samples of all three styles:
 [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md#output-styles).
 
 ## Development
