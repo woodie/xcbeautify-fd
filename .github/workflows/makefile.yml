@@ -29,6 +29,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Default checkout is shallow and skips tags -- `make build`'s
+          # `version` step needs the full history to `git describe --tags`
+          # and find v0.1.0 (see Makefile). Without this it silently falls
+          # back to "dev", which wouldn't fail the build but would mean CI
+          # never actually exercises the tagged-version path.
+          fetch-depth: 0
 
       - name: Install SwiftLint
         run: brew install swiftlint
@@ -38,6 +45,13 @@ jobs:
 
       - name: Build
         run: make build
+
+      - name: Check version
+        # Smoke-test that --version resolves to a real tag-derived string in
+        # CI, not just locally.
+        run: |
+          BIN="$(swift build --configuration release --show-bin-path)/xctidy"
+          "$BIN" --version
 
       - name: Test
         run: make test

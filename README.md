@@ -75,6 +75,17 @@ lane :test do
 end
 ```
 
+### Version
+
+```bash
+xctidy --version
+```
+
+Prints the installed version and exits -- bare number, no `xctidy`/`v`
+prefix (matches xcbeautify's `--version` style). Derived from the nearest
+git tag at build time (see the Makefile's `version` target), so it always
+reflects what you actually installed, not a hand-maintained constant.
+
 ## Output styles
 
 Three named styles, each matching a convention from a familiar test runner.
@@ -137,8 +148,13 @@ play. This works directly against a bare `Package.swift`, no
 ```bash
 xcodebuild -list  # confirm the scheme name
 xcodebuild test -scheme xctidy -destination 'platform=macOS' \
--only-testing:XctidyKitTests/SplitPathSpec | xctidy Tests
+-only-testing:XctidyKitTests/SplitPathSpec | xctidy Tests/XctidyKitTests
 ```
+
+`./test.sh` wraps that dance -- `./test.sh SplitPathSpec` or
+`./test.sh Tests/XctidyKitTests/SplitPathSpec.swift` (tab-completed paths
+work too) does the same thing. `./test.sh` with no args runs everything.
+See `docs/DEVELOPMENT.md` for the full set of forms it accepts.
 
 This is also the same mechanism `xcodebuild test [flags] | xctidy Tests`
 already uses for a full run -- `-only-testing:Target/ClassName` just

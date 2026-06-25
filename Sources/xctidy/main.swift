@@ -25,6 +25,9 @@ import XctidyKit
 //              passes, red "✗ name (FAILED - 1)" for failures, cyan
 //              "- name (SKIPPED)" for skips. Same convention as Mocha's
 //              default `spec` reporter or Jest's. Long form: --format spec.
+//   -v         print the version and exit (no stdin read). Long form:
+//              --version. Bare number, no "xctidy" prefix or "v" --
+//              matches xcbeautify's `--version` output style.
 //
 // All three styles end with the exact same run-results footer, lifted
 // verbatim from real xcbeautify -- a green "Test Succeeded"/red
@@ -46,6 +49,15 @@ func parseStyle(_ raw: String) -> RenderStyle? {
 }
 
 var args = Array(CommandLine.arguments.dropFirst())
+
+// Checked before the stdin-reading loop below, not as a case in the switch --
+// see wantsVersion's doc comment (XctidyKit/VersionFlag.swift) for why this
+// must short-circuit immediately rather than fall through to readLine().
+if wantsVersion(args) {
+    print(xctidyVersion)
+    exit(0)
+}
+
 var i = 0
 while i < args.count {
     switch args[i] {
