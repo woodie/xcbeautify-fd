@@ -15,15 +15,15 @@ been folded into `docs/HOW_IT_WORKS.md`'s "Background" and "Known
 limitations" sections, and the original was scrubbed -- see "Where we left
 off" below.)
 
-The engine itself is a Swift port of `tools/test_formatter.py` from the
-`next-caltrain-swift` sibling repo (see that repo's `docs/COWORK.md`, "Test
-output formatting"), reworked to read xcodebuild's raw output instead of
-post-processing xcbeautify's already-flattened text. Reading the raw protocol
-directly is what makes failure-folding possible here (see
-`docs/HOW_IT_WORKS.md`, "Failure folding") -- the Python version couldn't do
-that because by the time text reached it, xcbeautify had already joined a
-failing test's name and failure reason with the same `", "` separator the
-name itself uses internally.
+The engine started life as a Python proof-of-concept -- xctidy's own first
+version, not a port of some separately maintained tool -- that only existed
+for a few hours before being rewritten in Swift. That rewrite is also what
+unlocked reading xcodebuild's raw output directly instead of post-processing
+xcbeautify's already-flattened text, which is what makes failure-folding
+possible here (see `docs/HOW_IT_WORKS.md`, "Failure folding") -- the Python
+prototype couldn't do that, since by the time text reached it, xcbeautify
+had already joined a failing test's name and failure reason with the same
+`", "` separator the name itself uses internally.
 
 ## Naming history
 
@@ -66,8 +66,9 @@ moment -- check `git status` rather than assuming either way.
   xcpretty's `parser.rb` regexes (one deliberate improvement: the
   suite/class capture uses `\S+` instead of xcpretty's ambiguous `(.*) (.*)`,
   since class names never contain spaces). `loadKnownAtoms`/`splitPath`
-  implement the same dictionary-based comma-disambiguation as the Python
-  tool's `load_known_atoms()`/`split_path()`. `Engine` is the stateful
+  carry over the same dictionary-based comma-disambiguation algorithm and
+  function names from xctidy's brief original Python prototype's
+  `load_known_atoms()`/`split_path()`. `Engine` is the stateful
   line-by-line renderer; `RenderStyle` controls which of the three output
   styles it produces.
 - `Sources/xctidy/main.swift` -- CLI entry point. Reads stdin line by line,
@@ -91,7 +92,7 @@ moment -- check `git status` rather than assuming either way.
 
 ### Render styles
 
-`.classic` (default) is the original Python tool's look: glyph (`✔`/`⊘`/`✖`)
+`.classic` (default) is the look xctidy's original Python prototype had: glyph (`✔`/`⊘`/`✖`)
 plus the per-test `(N seconds)` xcodebuild reports. `.fd` clones real
 RSpec's `-fd` formatter's *leaf* rendering only: no glyph, yellow
 `(PENDING)` instead of `(SKIPPED)`. `.spec` clones Mocha/Jest's
@@ -497,3 +498,71 @@ was updated to describe the new conditional-sudo behavior alongside its
 existing `PREFIX` explanation. Not yet done: `git rm docs/example.gif` and
 restoring the Known-limitations README link both remain open from earlier
 rounds, still unanswered by the user.
+
+## Later session: the comma-disambiguation gap was a non-recursive glob
+
+The user converted a separate sibling project's (`~/workspace/zouk`) XCTest
+suite to Quick/Nimble (that conversion is documented in `zouk`'s own
+`docs/COWORK.md`, not here), then piped its real `make test` output through
+`xctidy` and got back a mis-rendered tree: bare-prose-comma descriptions
+with no parentheses at all -- `"decodes the name, size, time, and url"`,
+`"is nil, along with downloadedAt"`, `"...baseURL, replacing the whole
+path"` -- each got split into spurious extra nesting levels at every
+comma, even though `loadKnownAtoms`/`splitPath`'s dictionary-based
+disambiguation (see "Architecture" above) is specifically supposed to
+handle exactly this case, and `AnsiColorDemoSpec.swift` already has a
+passing test proving the algorithm handles a bare-prose-comma fixture
+correctly. So the algorithm itself wasn't broken -- something was
+preventing it from ever engaging for this real invocation.
+
+Root cause, confirmed by reading `loadKnownAtoms` in
+`Sources/XctidyKit/PathSplitting.swift`: it scanned `*.swift` files
+*directly inside* the given `specsDir` via `contentsOfDirectory(atPath:)`
+-- non-recursive, carried over directly from xctidy's brief original Python
+prototype's `Path(specs_dir).glob("*.swift")`. That's incompatible with this tool's
+own documented usage. The README's canonical examples (`xcodebuild test
+[flags] | xctidy Tests`, `swift test 2>&1 | xctidy Tests`) and
+`docs/HOW_IT_WORKS.md`'s "Where this fits in a fastlane pipeline" section
+all tell people to pass the top-level `Tests` directory -- but SwiftPM
+puts each target's specs one level below that, in
+`Tests/<ModuleName>Tests/*.swift` (`Tests/ZoukKitTests/*.swift` for zouk,
+`Tests/XctidyKitTests/*.swift` for this very repo), never directly inside
+`Tests/` itself. A non-recursive glob over `Tests/` finds zero `.swift`
+files there, so `atoms` came back empty for the exact invocation the
+README recommends -- which silently drops `splitPath` to the paren-depth
+heuristic for every single name, the same fallback path that already had
+a passing test (`SplitPathSpec.swift`'s "falls back to the heuristic when
+atoms is empty") confirming *that* path mis-splits bare prose commas. The
+gap was real and exactly matches the zouk symptom: every prior test
+covering `loadKnownAtoms` (`LoadKnownAtomsSpec.swift`) and the
+dictionary-disambiguation path (`SplitPathSpec.swift`,
+`AnsiColorDemoSpec.swift`) wrote its fixtures *directly inside* a flat
+temp directory -- none of them exercised the realistic nested
+per-target-subdirectory layout the README itself prescribes, so the bug
+had no test surface to be caught on.
+
+Fix: `loadKnownAtoms` now calls `subpathsOfDirectory(atPath:)` instead of
+`contentsOfDirectory(atPath:)`, walking the whole tree under `specsDir`
+rather than just its immediate children, so `xctidy Tests` actually finds
+every spec file regardless of how many target subdirectories sit
+underneath it. Added a regression case to `LoadKnownAtomsSpec.swift`
+("recurses into per-target subdirectories like Tests/<ModuleName>Tests/")
+that writes a fixture spec one level down in a `FooKitTests/` subdirectory
+and asserts `loadKnownAtoms` still finds its atoms -- this is the case
+that would have caught the bug before it ever reached a real project.
+Updated `loadKnownAtoms`'s doc comment to explain the old non-recursive
+behavior, why it was wrong, and why the new recursive scan is correct
+instead of just describing current behavior in isolation. No changes were
+needed in `splitPath`, `Engine.swift`, or any CLI flag -- the
+disambiguation algorithm itself was always correct, it just never received
+the atoms it needed.
+
+Made by inspection only per the sandbox's no-Swift-toolchain limitation
+above -- the existing `LoadKnownAtomsSpec.swift`/`SplitPathSpec.swift`
+cases were traced by hand against the new `subpathsOfDirectory` call to
+confirm none of them regress (none use nested subdirectories, so their
+expected output is unchanged), but this needs a real `swift test` run on
+the user's Mac to confirm, and then a real
+`make test | xctidy Tests` (or `swift test 2>&1 | xctidy Tests`, run from
+`~/workspace/zouk` with the path adjusted to that repo's `Tests` directory)
+against `zouk` to confirm the original bare-prose-comma symptom is gone.

@@ -83,6 +83,32 @@ final class LoadKnownAtomsSpec: QuickSpec {
                 let atoms = loadKnownAtoms(specsDir: "/nonexistent/path/for/xctidy-tests")
                 expect(atoms).to(beEmpty())
             }
+
+            it("recurses into per-target subdirectories like Tests/<ModuleName>Tests/") {
+                // The real-world layout this tool's own README tells people to
+                // point it at: `xctidy Tests` names the top-level Tests/
+                // directory, but SwiftPM nests each target's specs one level
+                // below that (Tests/FooKitTests/*.swift), never directly
+                // inside Tests/ itself. A non-recursive scan over the
+                // directory passed here would find zero atoms and silently
+                // fall back to the bare paren-depth heuristic for every name --
+                // exactly the bug seen against a real project's
+                // `make test | xctidy` output, where a comma-free-of-parens
+                // description like "decodes the name, size, time, and url"
+                // got split into four spurious nested levels.
+                let dir = writeTempSpecsDir([:])
+                let subdir = (dir as NSString).appendingPathComponent("FooKitTests")
+                try! FileManager.default.createDirectory(
+                    atPath: subdir, withIntermediateDirectories: true)
+                try! caltrainServiceSwift.write(
+                    toFile: (subdir as NSString).appendingPathComponent("CaltrainServiceSpec.swift"),
+                    atomically: true, encoding: .utf8)
+
+                let atoms = loadKnownAtoms(specsDir: dir)
+
+                expect(atoms).to(contain("CaltrainService"))
+                expect(atoms).to(contain("is not a transfer, since both endpoints are South County"))
+            }
         }
     }
 }

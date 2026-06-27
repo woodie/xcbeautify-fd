@@ -35,13 +35,29 @@ public func unescapeSwiftLiteral(_ raw: String) -> String {
     return out
 }
 
-/// Scans `*.swift` files directly inside `specsDir` (non-recursive, matching
-/// the original Python tool's `Path(specs_dir).glob("*.swift")`) for
+/// Scans every `*.swift` file under `specsDir`, at any depth, for
 /// `describe("...")` / `context("...")` / `it("...")` string literals.
+///
+/// This used to be a non-recursive `contentsOfDirectory(atPath:)` glob,
+/// matching the original Python tool's `Path(specs_dir).glob("*.swift")`.
+/// That's wrong for the layout this tool's own README tells people to use:
+/// `xcodebuild test | xctidy Tests` passes the top-level `Tests` directory,
+/// but SwiftPM puts each target's specs one level below that, in
+/// `Tests/<ModuleName>Tests/*.swift` -- never directly inside `Tests/`
+/// itself. A non-recursive glob over `Tests/` finds nothing there, so
+/// `atoms` came back empty for the exact invocation the README recommends,
+/// silently dropping every name to the paren-depth-only heuristic in
+/// `splitPath` -- which mis-splits a bare prose comma with no parens around
+/// it (e.g. "decodes the name, size, time, and url" -- see
+/// `LoadKnownAtomsSpec.swift`'s "recurses into per-target subdirectories"
+/// case, added when this was diagnosed against a real project's
+/// `make test | xctidy` output). `subpathsOfDirectory(atPath:)` walks the
+/// whole tree, so `xctidy Tests` now actually finds atoms regardless of how
+/// many target subdirectories sit underneath it.
 public func loadKnownAtoms(specsDir: String) -> Set<String> {
     var atoms = Set<String>()
     let fmr = FileManager.default
-    guard let entries = try? fmr.contentsOfDirectory(atPath: specsDir) else {
+    guard let entries = try? fmr.subpathsOfDirectory(atPath: specsDir) else {
         return atoms
     }
     for file in entries.filter({ $0.hasSuffix(".swift") }).sorted() {
