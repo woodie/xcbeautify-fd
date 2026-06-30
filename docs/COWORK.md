@@ -1,5 +1,7 @@
 # Working with xctidy
 
+Cross-project conventions (git locks, sandbox toolchain) are in `~/workspace/woodie/docs/COWORK.md`.
+
 `xctidy` is a standalone Swift CLI that parses raw `xcodebuild
 test`/`swift test` output directly -- the same textual protocol xcpretty and
 xcbeautify both regex-match -- into a nested `describe`/`context`/`it` tree,
